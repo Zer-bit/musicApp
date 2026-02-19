@@ -4,7 +4,7 @@
     <application
         android:label="jezsic"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/jezsic">
         <activity
             android:name=".MainActivity"
             android:exported="true"

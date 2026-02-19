@@ -89,6 +89,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   final List<Map<String, String>> _songs = [];
+  final Map<String, int> _playCount = {}; // Track play count for each song
+  final List<Map<String, dynamic>> _playlists = [
+    {'name': 'Favorites', 'songs': <String>[], 'isSystem': true},
+    {'name': 'Workout', 'songs': <String>[]},
+    {'name': 'Chill', 'songs': <String>[]},
+  ];
 
   void _updateSongs(List<Map<String, String>> songs) {
     setState(() {
@@ -97,11 +103,74 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _incrementPlayCount(String songPath) {
+    setState(() {
+      _playCount[songPath] = (_playCount[songPath] ?? 0) + 1;
+      _updateFavorites();
+    });
+  }
+
+  void _updateFavorites() {
+    // Get top 10 most played songs
+    final sortedSongs = _playCount.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    
+    final top10 = sortedSongs.take(10).map((e) => e.key).toList();
+    
+    // Update Favorites playlist (index 0)
+    setState(() {
+      _playlists[0]['songs'] = top10;
+    });
+  }
+
+  void _addPlaylist(String name) {
+    setState(() {
+      _playlists.add({'name': name, 'songs': <String>[]});
+    });
+  }
+
+  void _removePlaylist(int index) {
+    setState(() {
+      _playlists.removeAt(index);
+    });
+  }
+
+  void _addSongToPlaylist(int playlistIndex, String songPath) {
+    setState(() {
+      final songs = _playlists[playlistIndex]['songs'] as List<String>;
+      if (!songs.contains(songPath)) {
+        songs.add(songPath);
+      }
+    });
+  }
+
+  void _removeSongFromPlaylist(int playlistIndex, String songPath) {
+    setState(() {
+      final songs = _playlists[playlistIndex]['songs'] as List<String>;
+      songs.remove(songPath);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
-      AllSongsScreen(songs: _songs, onUpdateSongs: _updateSongs),
-      const PlaylistScreen(),
+      AllSongsScreen(
+        songs: _songs,
+        onUpdateSongs: _updateSongs,
+        playlists: _playlists,
+        onAddSongToPlaylist: _addSongToPlaylist,
+        onIncrementPlayCount: _incrementPlayCount,
+        playCount: _playCount,
+      ),
+      PlaylistScreen(
+        playlists: _playlists,
+        allSongs: _songs,
+        onAddPlaylist: _addPlaylist,
+        onRemovePlaylist: _removePlaylist,
+        onAddSongToPlaylist: _addSongToPlaylist,
+        onRemoveSongFromPlaylist: _removeSongFromPlaylist,
+        playCount: _playCount,
+      ),
     ];
 
     return Scaffold(
@@ -128,8 +197,20 @@ class _HomeScreenState extends State<HomeScreen> {
 class AllSongsScreen extends StatefulWidget {
   final List<Map<String, String>> songs;
   final Function(List<Map<String, String>>) onUpdateSongs;
+  final List<Map<String, dynamic>> playlists;
+  final Function(int, String) onAddSongToPlaylist;
+  final Function(String) onIncrementPlayCount;
+  final Map<String, int> playCount;
 
-  const AllSongsScreen({super.key, required this.songs, required this.onUpdateSongs});
+  const AllSongsScreen({
+    super.key,
+    required this.songs,
+    required this.onUpdateSongs,
+    required this.playlists,
+    required this.onAddSongToPlaylist,
+    required this.onIncrementPlayCount,
+    required this.playCount,
+  });
 
   @override
   State<AllSongsScreen> createState() => _AllSongsScreenState();
@@ -140,10 +221,38 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   int? _currentlyPlaying;
   bool _hasPermission = false;
   bool _isLoading = false;
+  bool _isPlaying = false;
+  Duration _currentPosition = Duration.zero;
+  Duration _totalDuration = Duration.zero;
+  bool _isShuffleOn = false;
+  LoopMode _loopMode = LoopMode.off;
 
   @override
   void initState() {
     super.initState();
+    _audioPlayer.playerStateStream.listen((state) {
+      setState(() {
+        _isPlaying = state.playing;
+      });
+    });
+    _audioPlayer.positionStream.listen((position) {
+      setState(() {
+        _currentPosition = position;
+      });
+    });
+    _audioPlayer.durationStream.listen((duration) {
+      setState(() {
+        _totalDuration = duration ?? Duration.zero;
+      });
+    });
+    _audioPlayer.processingStateStream.listen((state) {
+      if (state == ProcessingState.completed) {
+        // Only auto-play next if not in repeat-one mode
+        if (_loopMode != LoopMode.one) {
+          _playNext();
+        }
+      }
+    });
     _requestPermissionAndScan();
   }
 
@@ -188,20 +297,19 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   Future<void> _scanForMusicFiles() async {
     try {
       List<Map<String, String>> foundSongs = [];
+      Set<String> addedPaths = {}; // Track added files to avoid duplicates
       
       // Common music directories on Android
       List<String> musicPaths = [
         '/storage/emulated/0/Music',
         '/storage/emulated/0/Download',
         '/storage/emulated/0/Downloads',
-        '/sdcard/Music',
-        '/sdcard/Download',
       ];
 
       for (String path in musicPaths) {
         Directory dir = Directory(path);
         if (await dir.exists()) {
-          await _scanDirectory(dir, foundSongs);
+          await _scanDirectory(dir, foundSongs, addedPaths);
         }
       }
 
@@ -211,21 +319,43 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     }
   }
 
-  Future<void> _scanDirectory(Directory dir, List<Map<String, String>> songs) async {
+  Future<void> _scanDirectory(Directory dir, List<Map<String, String>> songs, Set<String> addedPaths) async {
     try {
       await for (var entity in dir.list(recursive: true, followLinks: false)) {
         if (entity is File) {
           String path = entity.path.toLowerCase();
           if (path.endsWith('.mp3') || path.endsWith('.m4a') || path.endsWith('.wav')) {
+            // Skip if already added
+            if (addedPaths.contains(entity.path)) {
+              continue;
+            }
+            
             String fileName = entity.path.split('/').last;
-            String title = fileName.replaceAll(RegExp(r'\.(mp3|m4a|wav)$'), '');
+            String title = fileName.replaceAll(RegExp(r'\.(mp3|m4a|wav)$', caseSensitive: false), '');
+            
+            // Get file duration using a separate audio player
+            String duration = '0:00';
+            try {
+              final tempPlayer = AudioPlayer();
+              final audioDuration = await tempPlayer.setFilePath(entity.path);
+              if (audioDuration != null) {
+                final minutes = audioDuration.inMinutes;
+                final seconds = audioDuration.inSeconds % 60;
+                duration = '$minutes:${seconds.toString().padLeft(2, '0')}';
+              }
+              await tempPlayer.dispose();
+            } catch (e) {
+              print('Error getting duration for ${entity.path}: $e');
+            }
             
             songs.add({
               'title': title,
               'artist': 'Unknown Artist',
               'path': entity.path,
-              'duration': '0:00',
+              'duration': duration,
             });
+            
+            addedPaths.add(entity.path);
           }
         }
       }
@@ -236,22 +366,286 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
 
   Future<void> _playSong(String path, int index) async {
     try {
+      print('=== Attempting to play: $path ===');
+      
+      // If same song, toggle play/pause
       if (_currentlyPlaying == index) {
-        if (_audioPlayer.playing) {
+        if (_isPlaying) {
+          print('Pausing...');
           await _audioPlayer.pause();
         } else {
+          print('Resuming...');
           await _audioPlayer.play();
         }
-      } else {
-        await _audioPlayer.setFilePath(path);
-        await _audioPlayer.play();
-        setState(() {
-          _currentlyPlaying = index;
-        });
+        return;
       }
-    } catch (e) {
-      print('Error playing song: $e');
+      
+      // Increment play count for the new song
+      widget.onIncrementPlayCount(path);
+      
+      // Play new song
+      print('Stopping previous song...');
+      await _audioPlayer.stop();
+      
+      // Update UI immediately
+      setState(() {
+        _currentlyPlaying = index;
+        _currentPosition = Duration.zero;
+      });
+      
+      print('Setting file path...');
+      await _audioPlayer.setFilePath(path);
+      
+      print('Setting volume to max...');
+      await _audioPlayer.setVolume(1.0);
+      
+      print('Starting playback...');
+      await _audioPlayer.play();
+      
+      print('=== Playback started successfully ===');
+      print('Audio output: ${_audioPlayer.audioSource}');
+    } catch (e, stackTrace) {
+      print('=== ERROR playing song ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cannot play: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
+  void _playNext() {
+    if (widget.songs.isEmpty || _currentlyPlaying == null) return;
+    
+    // If loop mode is off and we're at the last song, stop
+    if (_loopMode == LoopMode.off && _currentlyPlaying == widget.songs.length - 1 && !_isShuffleOn) {
+      _audioPlayer.stop();
+      setState(() {
+        _currentlyPlaying = null;
+      });
+      return;
+    }
+    
+    int nextIndex;
+    if (_isShuffleOn) {
+      // Generate random index different from current
+      do {
+        nextIndex = (DateTime.now().millisecondsSinceEpoch + DateTime.now().microsecond) % widget.songs.length;
+      } while (nextIndex == _currentlyPlaying && widget.songs.length > 1);
+    } else {
+      nextIndex = (_currentlyPlaying! + 1) % widget.songs.length;
+    }
+    
+    if (nextIndex < widget.songs.length) {
+      _playSong(widget.songs[nextIndex]['path']!, nextIndex);
+    }
+  }
+
+  void _playPrevious() {
+    if (widget.songs.isEmpty || _currentlyPlaying == null) return;
+    
+    // If more than 3 seconds into song, restart it
+    if (_currentPosition.inSeconds > 3) {
+      _audioPlayer.seek(Duration.zero);
+      return;
+    }
+    
+    int prevIndex;
+    if (_isShuffleOn) {
+      // Generate random index different from current
+      do {
+        prevIndex = (DateTime.now().millisecondsSinceEpoch + DateTime.now().microsecond) % widget.songs.length;
+      } while (prevIndex == _currentlyPlaying && widget.songs.length > 1);
+    } else {
+      prevIndex = (_currentlyPlaying! - 1 + widget.songs.length) % widget.songs.length;
+    }
+    
+    if (prevIndex < widget.songs.length) {
+      _playSong(widget.songs[prevIndex]['path']!, prevIndex);
+    }
+  }
+
+  void _toggleShuffle() {
+    setState(() {
+      _isShuffleOn = !_isShuffleOn;
+    });
+  }
+
+  void _toggleLoopMode() {
+    setState(() {
+      switch (_loopMode) {
+        case LoopMode.off:
+          _loopMode = LoopMode.all;
+          break;
+        case LoopMode.all:
+          _loopMode = LoopMode.one;
+          _audioPlayer.setLoopMode(LoopMode.one);
+          break;
+        case LoopMode.one:
+          _loopMode = LoopMode.off;
+          _audioPlayer.setLoopMode(LoopMode.off);
+          break;
+      }
+    });
+  }
+
+  IconData _getLoopIcon() {
+    switch (_loopMode) {
+      case LoopMode.off:
+        return Icons.repeat;
+      case LoopMode.all:
+        return Icons.repeat;
+      case LoopMode.one:
+        return Icons.repeat_one;
+    }
+  }
+
+  void _showAddToPlaylistDialog(String songPath, String songTitle) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey.shade900,
+        title: const Text('Add to Playlist', style: TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: widget.playlists.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    'No playlists available. Create one first!',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: widget.playlists.length,
+                  itemBuilder: (context, index) {
+                    final playlist = widget.playlists[index];
+                    final songs = playlist['songs'] as List<String>;
+                    final isAdded = songs.contains(songPath);
+                    
+                    return ListTile(
+                      leading: Icon(
+                        Icons.playlist_play,
+                        color: isAdded ? Colors.deepPurple : Colors.grey,
+                      ),
+                      title: Text(
+                        playlist['name'],
+                        style: TextStyle(
+                          color: isAdded ? Colors.deepPurple : Colors.white,
+                        ),
+                      ),
+                      trailing: Icon(
+                        isAdded ? Icons.check : Icons.add,
+                        color: isAdded ? Colors.deepPurple : Colors.grey,
+                      ),
+                      onTap: () {
+                        if (!isAdded) {
+                          widget.onAddSongToPlaylist(index, songPath);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Added to ${playlist['name']}'),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                        }
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Colors.deepPurple)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteSongConfirmation(String songPath, String songTitle, int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey.shade900,
+        title: const Text('Delete Song', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to permanently delete "$songTitle"? This cannot be undone.',
+          style: const TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                final file = File(songPath);
+                if (await file.exists()) {
+                  await file.delete();
+                  
+                  // Remove from song list
+                  setState(() {
+                    widget.songs.removeAt(index);
+                    if (_currentlyPlaying == index) {
+                      _audioPlayer.stop();
+                      _currentlyPlaying = null;
+                    } else if (_currentlyPlaying != null && _currentlyPlaying! > index) {
+                      _currentlyPlaying = _currentlyPlaying! - 1;
+                    }
+                  });
+                  
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Deleted $songTitle'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('File not found'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error deleting file: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -274,7 +668,10 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
           ),
         ],
       ),
-      body: !_hasPermission
+      body: Column(
+        children: [
+          Expanded(
+            child: !_hasPermission
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -341,7 +738,8 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                       itemCount: widget.songs.length,
                       itemBuilder: (context, index) {
                         final song = widget.songs[index];
-                        final isPlaying = _currentlyPlaying == index && _audioPlayer.playing;
+                        final isCurrentSong = _currentlyPlaying == index;
+                        final isPlaying = isCurrentSong && _isPlaying;
                         
                         return ListTile(
                           leading: Container(
@@ -370,57 +768,627 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          trailing: Text(
-                            song['duration']!,
-                            style: const TextStyle(color: Colors.grey),
+                          trailing: PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert, color: Colors.grey),
+                            color: Colors.grey.shade900,
+                            onSelected: (value) {
+                              if (value == 'add_to_playlist') {
+                                _showAddToPlaylistDialog(song['path']!, song['title']!);
+                              } else if (value == 'delete') {
+                                _showDeleteSongConfirmation(song['path']!, song['title']!, index);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'add_to_playlist',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.playlist_add, color: Colors.white),
+                                    SizedBox(width: 12),
+                                    Text('Add to Playlist', style: TextStyle(color: Colors.white)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete_forever, color: Colors.red),
+                                    SizedBox(width: 12),
+                                    Text('Delete Song', style: TextStyle(color: Colors.red)),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                           onTap: () => _playSong(song['path']!, index),
                         );
                       },
                     ),
+          ),
+          // Mini player at bottom
+          if (_currentlyPlaying != null)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade900,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          gradient: LinearGradient(
+                            colors: [Colors.deepPurple.shade400, Colors.purple.shade800],
+                          ),
+                        ),
+                        child: Icon(
+                          _isPlaying ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _currentlyPlaying != null && _currentlyPlaying! < widget.songs.length
+                                  ? widget.songs[_currentlyPlaying!]['title']!
+                                  : 'Unknown',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '${_formatDuration(_currentPosition)} / ${_formatDuration(_totalDuration)}',
+                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.shuffle,
+                          color: _isShuffleOn ? Colors.deepPurple : Colors.grey,
+                        ),
+                        onPressed: _toggleShuffle,
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _getLoopIcon(),
+                          color: _loopMode != LoopMode.off ? Colors.deepPurple : Colors.grey,
+                        ),
+                        onPressed: _toggleLoopMode,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    ),
+                    child: Slider(
+                      value: _currentPosition.inSeconds.toDouble(),
+                      max: _totalDuration.inSeconds.toDouble() > 0 ? _totalDuration.inSeconds.toDouble() : 1,
+                      activeColor: Colors.deepPurple,
+                      inactiveColor: Colors.grey.shade800,
+                      onChanged: (value) async {
+                        await _audioPlayer.seek(Duration(seconds: value.toInt()));
+                      },
+                    ),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.skip_previous, size: 32),
+                        color: Colors.white,
+                        onPressed: widget.songs.isNotEmpty && _currentlyPlaying != null ? _playPrevious : null,
+                      ),
+                      const SizedBox(width: 16),
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [Colors.deepPurple.shade400, Colors.purple.shade800],
+                          ),
+                        ),
+                        child: IconButton(
+                          icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 32),
+                          color: Colors.white,
+                          onPressed: _currentlyPlaying != null && _currentlyPlaying! < widget.songs.length
+                              ? () => _playSong(widget.songs[_currentlyPlaying!]['path']!, _currentlyPlaying!)
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next, size: 32),
+                        color: Colors.white,
+                        onPressed: widget.songs.isNotEmpty && _currentlyPlaying != null ? _playNext : null,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
 
 class PlaylistScreen extends StatelessWidget {
-  const PlaylistScreen({super.key});
+  final List<Map<String, dynamic>> playlists;
+  final List<Map<String, String>> allSongs;
+  final Function(String) onAddPlaylist;
+  final Function(int) onRemovePlaylist;
+  final Function(int, String) onAddSongToPlaylist;
+  final Function(int, String) onRemoveSongFromPlaylist;
+  final Map<String, int> playCount;
+
+  const PlaylistScreen({
+    super.key,
+    required this.playlists,
+    required this.allSongs,
+    required this.onAddPlaylist,
+    required this.onRemovePlaylist,
+    required this.onAddSongToPlaylist,
+    required this.onRemoveSongFromPlaylist,
+    required this.playCount,
+  });
+
+  void _showAddPlaylistDialog(BuildContext context) {
+    final TextEditingController controller = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey.shade900,
+        title: const Text('New Playlist', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'Playlist name',
+            hintStyle: TextStyle(color: Colors.grey),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.deepPurple),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.deepPurple),
+            ),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                onAddPlaylist(controller.text.trim());
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Create', style: TextStyle(color: Colors.deepPurple)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey.shade900,
+        title: const Text('Delete Playlist', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to delete "${playlists[index]['name']}"?',
+          style: const TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              onRemovePlaylist(index);
+              Navigator.pop(context);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final playlists = [
-      {'name': 'Favorites', 'count': '0 songs'},
-      {'name': 'Workout', 'count': '0 songs'},
-      {'name': 'Chill', 'count': '0 songs'},
-    ];
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Playlists'),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () => _showAddPlaylistDialog(context),
+          ),
+        ],
       ),
-      body: ListView.builder(
-        itemCount: playlists.length,
-        itemBuilder: (context, index) {
-          return ListTile(
-            leading: Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                gradient: LinearGradient(
-                  colors: [Colors.deepPurple.shade400, Colors.purple.shade800],
-                ),
+      body: playlists.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.playlist_play, size: 60, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text('No playlists yet', style: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () => _showAddPlaylistDialog(context),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Create Playlist'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                    ),
+                  ),
+                ],
               ),
-              child: const Icon(Icons.playlist_play, color: Colors.white),
+            )
+          : ListView.builder(
+              itemCount: playlists.length,
+              itemBuilder: (context, index) {
+                final playlist = playlists[index];
+                final songCount = (playlist['songs'] as List).length;
+                final isSystemPlaylist = playlist['isSystem'] == true;
+                
+                return ListTile(
+                  leading: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      gradient: LinearGradient(
+                        colors: isSystemPlaylist 
+                            ? [Colors.pink.shade400, Colors.red.shade800]
+                            : [Colors.deepPurple.shade400, Colors.purple.shade800],
+                      ),
+                    ),
+                    child: Icon(
+                      isSystemPlaylist ? Icons.favorite : Icons.playlist_play,
+                      color: Colors.white,
+                    ),
+                  ),
+                  title: Text(
+                    playlist['name'],
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: Text(
+                    '$songCount ${songCount == 1 ? 'song' : 'songs'}${isSystemPlaylist ? ' • Auto-updated' : ''}',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                  trailing: isSystemPlaylist
+                      ? null
+                      : PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert, color: Colors.grey),
+                          color: Colors.grey.shade900,
+                          onSelected: (value) {
+                            if (value == 'delete') {
+                              _showDeleteConfirmation(context, index);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete, color: Colors.red),
+                                  SizedBox(width: 12),
+                                  Text('Delete Playlist', style: TextStyle(color: Colors.red)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PlaylistDetailScreen(
+                          playlistName: playlist['name'],
+                          playlistIndex: index,
+                          songPaths: List<String>.from(playlist['songs']),
+                          allSongs: allSongs,
+                          onAddSong: (songPath) => onAddSongToPlaylist(index, songPath),
+                          onRemoveSong: (songPath) => onRemoveSongFromPlaylist(index, songPath),
+                          isSystemPlaylist: isSystemPlaylist,
+                          playCount: playCount,
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
-            title: Text(playlists[index]['name']!, style: const TextStyle(color: Colors.white)),
-            subtitle: Text(playlists[index]['count']!, style: const TextStyle(color: Colors.grey)),
-            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
-            onTap: () {},
-          );
-        },
+    );
+  }
+}
+
+
+class PlaylistDetailScreen extends StatefulWidget {
+  final String playlistName;
+  final int playlistIndex;
+  final List<String> songPaths;
+  final List<Map<String, String>> allSongs;
+  final Function(String) onAddSong;
+  final Function(String) onRemoveSong;
+  final bool isSystemPlaylist;
+  final Map<String, int> playCount;
+
+  const PlaylistDetailScreen({
+    super.key,
+    required this.playlistName,
+    required this.playlistIndex,
+    required this.songPaths,
+    required this.allSongs,
+    required this.onAddSong,
+    required this.onRemoveSong,
+    this.isSystemPlaylist = false,
+    required this.playCount,
+  });
+
+  @override
+  State<PlaylistDetailScreen> createState() => _PlaylistDetailScreenState();
+}
+
+class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  int? _currentlyPlaying;
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer.playerStateStream.listen((state) {
+      setState(() {
+        _isPlaying = state.playing;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _playSong(String path, int index) async {
+    try {
+      if (_currentlyPlaying == index) {
+        if (_isPlaying) {
+          await _audioPlayer.pause();
+        } else {
+          await _audioPlayer.play();
+        }
+        return;
+      }
+      
+      await _audioPlayer.stop();
+      await _audioPlayer.setFilePath(path);
+      await _audioPlayer.setVolume(1.0);
+      await _audioPlayer.play();
+      
+      setState(() {
+        _currentlyPlaying = index;
+      });
+    } catch (e) {
+      print('Error playing song: $e');
+    }
+  }
+
+  void _showAddSongsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey.shade900,
+        title: const Text('Add Songs', style: TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: widget.allSongs.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    'No songs available',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: widget.allSongs.length,
+                  itemBuilder: (context, index) {
+                    final song = widget.allSongs[index];
+                    final isAdded = widget.songPaths.contains(song['path']);
+                    
+                    return ListTile(
+                      leading: Icon(
+                        Icons.music_note,
+                        color: isAdded ? Colors.deepPurple : Colors.grey,
+                      ),
+                      title: Text(
+                        song['title']!,
+                        style: TextStyle(
+                          color: isAdded ? Colors.deepPurple : Colors.white,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Icon(
+                        isAdded ? Icons.check : Icons.add,
+                        color: isAdded ? Colors.deepPurple : Colors.grey,
+                      ),
+                      onTap: () {
+                        if (!isAdded) {
+                          widget.onAddSong(song['path']!);
+                          Navigator.pop(context);
+                          setState(() {});
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Added ${song['title']}'),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                        }
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Colors.deepPurple)),
+          ),
+        ],
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final playlistSongs = widget.allSongs.where((song) => widget.songPaths.contains(song['path'])).toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.playlistName),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: widget.isSystemPlaylist
+            ? null
+            : [
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _showAddSongsDialog,
+                ),
+              ],
+      ),
+      body: playlistSongs.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.music_note, size: 60, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.isSystemPlaylist
+                        ? 'Play songs to add them to Favorites'
+                        : 'No songs in this playlist',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                  if (!widget.isSystemPlaylist) ...[
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _showAddSongsDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Songs'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            )
+          : ListView.builder(
+              itemCount: playlistSongs.length,
+              itemBuilder: (context, index) {
+                final song = playlistSongs[index];
+                final isCurrentSong = _currentlyPlaying == index;
+                final isPlaying = isCurrentSong && _isPlaying;
+                
+                return ListTile(
+                  leading: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      gradient: LinearGradient(
+                        colors: [Colors.deepPurple.shade400, Colors.purple.shade800],
+                      ),
+                    ),
+                    child: Icon(
+                      isPlaying ? Icons.pause : Icons.music_note,
+                      color: Colors.white,
+                    ),
+                  ),
+                  title: Text(
+                    song['title']!,
+                    style: const TextStyle(color: Colors.white),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    song['artist']!,
+                    style: const TextStyle(color: Colors.grey),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: widget.isSystemPlaylist
+                      ? Text(
+                          '${widget.playCount[song['path']] ?? 0} plays',
+                          style: const TextStyle(color: Colors.grey, fontSize: 12),
+                        )
+                      : PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert, color: Colors.grey),
+                          color: Colors.grey.shade900,
+                          onSelected: (value) {
+                            if (value == 'remove') {
+                              widget.onRemoveSong(song['path']!);
+                              setState(() {});
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Removed ${song['title']}'),
+                                  duration: const Duration(seconds: 1),
+                                ),
+                              );
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'remove',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.remove_circle, color: Colors.red),
+                                  SizedBox(width: 12),
+                                  Text('Remove from Playlist', style: TextStyle(color: Colors.red)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                  onTap: () => _playSong(song['path']!, index),
+                );
+              },
+            ),
     );
   }
 }
