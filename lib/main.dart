@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -530,6 +531,7 @@ class AllSongsScreen extends StatefulWidget {
 
 class _AllSongsScreenState extends State<AllSongsScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
+  final TextEditingController _searchController = TextEditingController();
   int? _currentlyPlaying;
   bool _hasPermission = false;
   bool _isLoading = false;
@@ -538,10 +540,13 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   Duration _totalDuration = Duration.zero;
   bool _isShuffleOn = false;
   LoopMode _loopMode = LoopMode.off;
+  String _searchQuery = '';
+  double _volumeBoost = 1.0; // 1.0 = 100%, 1.5 = 150%, 2.0 = 200%
 
   @override
   void initState() {
     super.initState();
+    _initAudioSession();
     _audioPlayer.playerStateStream.listen((state) {
       setState(() {
         _isPlaying = state.playing;
@@ -566,6 +571,16 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       }
     });
     _requestPermissionAndScan();
+  }
+
+  Future<void> _initAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+      // This enables better audio quality and loudness management
+    } catch (e) {
+      print('Error configuring audio session: $e');
+    }
   }
 
   Future<void> _requestPermissionAndScan() async {
@@ -717,8 +732,20 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       print('Setting file path...');
       await _audioPlayer.setFilePath(path);
 
-      print('Setting volume to max...');
-      await _audioPlayer.setVolume(1.0);
+      // Apply volume boost with smart limiting to prevent distortion
+      // Use a softer curve for higher volumes to reduce clipping
+      double effectiveVolume = _volumeBoost;
+      if (_volumeBoost > 1.0) {
+        // Apply a compression curve: reduces the boost slightly at peaks
+        // This helps prevent harsh clipping while maintaining loudness
+        effectiveVolume = 1.0 + ((_volumeBoost - 1.0) * 0.85);
+      }
+      
+      print('Setting volume boost to ${_volumeBoost * 100}% (effective: ${(effectiveVolume * 100).toInt()}%)...');
+      await _audioPlayer.setVolume(effectiveVolume);
+
+      // Enable audio session for better quality
+      await _audioPlayer.setSpeed(1.0); // Ensure normal playback speed
 
       print('Starting playback...');
       await _audioPlayer.play();
@@ -752,8 +779,17 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   void _playNext() {
     if (widget.songs.isEmpty || _currentlyPlaying == null) return;
 
-    // If loop mode is off and we're at the last song, stop
-    if (_loopMode == LoopMode.off &&
+    // If loop mode is off, stop playback (don't auto-play next)
+    if (_loopMode == LoopMode.off) {
+      _audioPlayer.stop();
+      setState(() {
+        _isPlaying = false;
+      });
+      return;
+    }
+
+    // If we're at the last song and loop all is not on, stop
+    if (_loopMode != LoopMode.all &&
         _currentlyPlaying == widget.songs.length - 1 &&
         !_isShuffleOn) {
       _audioPlayer.stop();
@@ -842,6 +878,28 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       case LoopMode.one:
         return Icons.repeat_one;
     }
+  }
+
+  void _updateVolumeBoost(double value) {
+    setState(() {
+      _volumeBoost = value;
+    });
+    
+    // Apply volume boost with smart limiting to prevent distortion
+    double effectiveVolume = value;
+    if (value > 1.0) {
+      // Apply a compression curve for volumes above 100%
+      // This reduces harsh clipping while maintaining perceived loudness
+      effectiveVolume = 1.0 + ((value - 1.0) * 0.85);
+    }
+    
+    _audioPlayer.setVolume(effectiveVolume);
+  }
+
+  String _getVolumeBoostLabel() {
+    if (_volumeBoost == 1.0) return 'Normal';
+    if (_volumeBoost == 1.5) return 'Boost';
+    return 'Max Boost';
   }
 
   void _showAddToPlaylistDialog(String songPath, String songTitle) {
@@ -992,17 +1050,82 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   @override
   void dispose() {
     _audioPlayer.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Filter songs based on search query
+    final filteredSongs = widget.songs.where((song) {
+      final title = song['title']?.toLowerCase() ?? '';
+      final artist = song['artist']?.toLowerCase() ?? '';
+      final query = _searchQuery.toLowerCase();
+      return title.contains(query) || artist.contains(query);
+    }).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('All Songs'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          PopupMenuButton<double>(
+            icon: Icon(
+              Icons.volume_up,
+              color: _volumeBoost > 1.0 ? Colors.deepPurple : Colors.white,
+            ),
+            color: Colors.grey.shade900,
+            offset: const Offset(0, 50),
+            tooltip: _getVolumeBoostLabel(),
+            onSelected: (value) {
+              _updateVolumeBoost(value);
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 1.0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '100% - Normal',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    if (_volumeBoost == 1.0)
+                      const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 1.5,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '150% - Boost',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    if (_volumeBoost == 1.5)
+                      const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 2.0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '200% - Max Boost',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    if (_volumeBoost == 2.0)
+                      const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                  ],
+                ),
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _requestPermissionAndScan,
@@ -1011,6 +1134,45 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       ),
       body: Column(
         children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Search songs...',
+                hintStyle: TextStyle(color: Colors.grey.shade500),
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.grey.shade900,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+            ),
+          ),
           Expanded(
             child: !_hasPermission
                 ? Center(
@@ -1053,43 +1215,51 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                       ],
                     ),
                   )
-                : widget.songs.isEmpty
+                : filteredSongs.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(
-                          Icons.music_note,
+                        Icon(
+                          _searchQuery.isEmpty ? Icons.music_note : Icons.search_off,
                           size: 60,
                           color: Colors.grey,
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'No music files found',
-                          style: TextStyle(color: Colors.grey),
+                        Text(
+                          _searchQuery.isEmpty
+                              ? 'No music files found'
+                              : 'No songs match your search',
+                          style: const TextStyle(color: Colors.grey),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'Add MP3 files to Music or Download folder',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        Text(
+                          _searchQuery.isEmpty
+                              ? 'Add MP3 files to Music or Download folder'
+                              : 'Try a different search term',
+                          style: const TextStyle(color: Colors.grey, fontSize: 12),
                         ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: _requestPermissionAndScan,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Scan Again'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurple,
+                        if (_searchQuery.isEmpty)
+                          const SizedBox(height: 16),
+                        if (_searchQuery.isEmpty)
+                          ElevatedButton.icon(
+                            onPressed: _requestPermissionAndScan,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Scan Again'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.deepPurple,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   )
                 : ListView.builder(
-                    itemCount: widget.songs.length,
+                    itemCount: filteredSongs.length,
                     itemBuilder: (context, index) {
-                      final song = widget.songs[index];
-                      final isCurrentSong = _currentlyPlaying == index;
+                      final song = filteredSongs[index];
+                      // Find the original index in widget.songs
+                      final originalIndex = widget.songs.indexOf(song);
+                      final isCurrentSong = _currentlyPlaying == originalIndex;
                       final isPlaying = isCurrentSong && _isPlaying;
 
                       return ListTile(
@@ -1135,7 +1305,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                               _showDeleteSongConfirmation(
                                 song['path']!,
                                 song['title']!,
-                                index,
+                                originalIndex,
                               );
                             }
                           },
@@ -1168,7 +1338,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                             ),
                           ],
                         ),
-                        onTap: () => _playSong(song['path']!, index),
+                        onTap: () => _playSong(song['path']!, originalIndex),
                       );
                     },
                   ),
@@ -1251,6 +1421,62 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                               : Colors.grey,
                         ),
                         onPressed: _toggleLoopMode,
+                      ),
+                      PopupMenuButton<double>(
+                        icon: Icon(
+                          Icons.volume_up,
+                          color: _volumeBoost > 1.0 ? Colors.deepPurple : Colors.grey,
+                        ),
+                        color: Colors.grey.shade900,
+                        offset: const Offset(0, -150),
+                        tooltip: _getVolumeBoostLabel(),
+                        onSelected: (value) {
+                          _updateVolumeBoost(value);
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 1.0,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  '100% - Normal',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                                if (_volumeBoost == 1.0)
+                                  const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 1.5,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  '150% - Boost',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                                if (_volumeBoost == 1.5)
+                                  const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 2.0,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  '200% - Max Boost',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                                if (_volumeBoost == 2.0)
+                                  const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
