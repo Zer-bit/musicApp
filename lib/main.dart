@@ -4,10 +4,65 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:async';
 import 'dart:convert';
+
+// App Color Scheme - Blue & Purple Fusion
+class AppColors {
+  // Purple shades
+  static const Color purple = Color(0xFF9C27B0); // Deep Purple
+  static const Color purpleLight = Color(0xFFBA68C8); // Light Purple
+  static const Color purpleDark = Color(0xFF7B1FA2); // Dark Purple
+  
+  // Blue shades
+  static const Color blue = Color(0xFF2196F3); // Blue
+  static const Color blueLight = Color(0xFF64B5F6); // Light Blue
+  static const Color blueDark = Color(0xFF1976D2); // Dark Blue
+  
+  // Accent colors
+  static const Color accent = Color(0xFF00BCD4); // Cyan accent
+  static const Color accentPink = Color(0xFFE91E63); // Pink accent
+  
+  // Backgrounds
+  static const Color background = Colors.black;
+  static const Color surface = Color(0xFF1E1E1E);
+  static const Color surfaceLight = Color(0xFF2A2A2A);
+  
+  // Gradients
+  static LinearGradient get purpleBlueGradient => const LinearGradient(
+    colors: [Color(0xFF9C27B0), Color(0xFF2196F3)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  
+  static LinearGradient get bluePurpleGradient => const LinearGradient(
+    colors: [Color(0xFF2196F3), Color(0xFF9C27B0)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  
+  static LinearGradient get lightGradient => const LinearGradient(
+    colors: [Color(0xFFBA68C8), Color(0xFF64B5F6)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  
+  static LinearGradient get darkGradient => const LinearGradient(
+    colors: [Color(0xFF7B1FA2), Color(0xFF1976D2)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  
+  static LinearGradient get accentGradient => const LinearGradient(
+    colors: [Color(0xFFE91E63), Color(0xFF00BCD4)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,8 +78,13 @@ class MyApp extends StatelessWidget {
       title: 'Jezsic',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        primaryColor: Colors.deepPurple,
+        primaryColor: AppColors.purple,
         scaffoldBackgroundColor: Colors.black,
+        colorScheme: ColorScheme.dark(
+          primary: AppColors.purple,
+          secondary: AppColors.blue,
+          surface: AppColors.surface,
+        ),
       ),
       home: const LoadingScreen(),
     );
@@ -368,7 +428,7 @@ class _VinylPainter extends CustomPainter {
       ..shader = RadialGradient(
         colors: [
           Colors.transparent,
-          Colors.deepPurple.withOpacity(0.18),
+          AppColors.purple.withOpacity(0.18),
           Colors.transparent,
         ],
         stops: const [0.35, 0.65, 1.0],
@@ -401,6 +461,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   final List<Map<String, String>> _songs = [];
   final Map<String, int> _playCount = {}; // Track play count for each song
+  final Map<String, String> _lyrics = {}; // Store lyrics for each song (path -> lyrics)
   final List<Map<String, dynamic>> _playlists = [
     {'name': 'Favorites', 'songs': <String>[], 'isSystem': true},
     {'name': 'Workout', 'songs': <String>[]},
@@ -462,6 +523,47 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _saveLyrics(String songPath, String lyrics) {
+    setState(() {
+      _lyrics[songPath] = lyrics;
+    });
+    _saveLyricsToCache();
+  }
+
+  Future<void> _saveLyricsToCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lyricsJson = jsonEncode(_lyrics);
+      await prefs.setString('cached_lyrics', lyricsJson);
+    } catch (e) {
+      print('Error saving lyrics: $e');
+    }
+  }
+
+  Future<void> _loadLyricsFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lyricsJson = prefs.getString('cached_lyrics');
+      if (lyricsJson != null && lyricsJson.isNotEmpty) {
+        final Map<String, dynamic> decoded = jsonDecode(lyricsJson);
+        setState(() {
+          _lyrics.clear();
+          decoded.forEach((key, value) {
+            _lyrics[key] = value.toString();
+          });
+        });
+      }
+    } catch (e) {
+      print('Error loading lyrics: $e');
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLyricsFromCache();
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
@@ -472,6 +574,8 @@ class _HomeScreenState extends State<HomeScreen> {
         onAddSongToPlaylist: _addSongToPlaylist,
         onIncrementPlayCount: _incrementPlayCount,
         playCount: _playCount,
+        lyrics: _lyrics,
+        onSaveLyrics: _saveLyrics,
       ),
       PlaylistScreen(
         playlists: _playlists,
@@ -481,6 +585,12 @@ class _HomeScreenState extends State<HomeScreen> {
         onAddSongToPlaylist: _addSongToPlaylist,
         onRemoveSongFromPlaylist: _removeSongFromPlaylist,
         playCount: _playCount,
+      ),
+      BrowseSongsScreen(
+        onSongDownloaded: () {
+          // Refresh the song list when a new song is downloaded
+          setState(() {});
+        },
       ),
     ];
 
@@ -494,7 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         },
         backgroundColor: Colors.grey.shade900,
-        selectedItemColor: Colors.deepPurple,
+        selectedItemColor: AppColors.blue,
         unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(
@@ -504,6 +614,10 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.playlist_play),
             label: 'Playlists',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.cloud_download),
+            label: 'Browse',
           ),
         ],
       ),
@@ -518,6 +632,8 @@ class AllSongsScreen extends StatefulWidget {
   final Function(int, String) onAddSongToPlaylist;
   final Function(String) onIncrementPlayCount;
   final Map<String, int> playCount;
+  final Map<String, String> lyrics;
+  final Function(String, String) onSaveLyrics;
 
   const AllSongsScreen({
     super.key,
@@ -527,6 +643,8 @@ class AllSongsScreen extends StatefulWidget {
     required this.onAddSongToPlaylist,
     required this.onIncrementPlayCount,
     required this.playCount,
+    required this.lyrics,
+    required this.onSaveLyrics,
   });
 
   @override
@@ -1200,7 +1318,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
               Text(
                 'Timer active: ${_getRemainingTime()} remaining',
                 style: const TextStyle(
-                  color: Colors.deepPurple,
+                  color: AppColors.purple,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
@@ -1255,7 +1373,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
         _setSleepTimer(duration);
       },
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: AppColors.purple,
         minimumSize: const Size(double.infinity, 48),
       ),
       child: Text(label),
@@ -1292,17 +1410,17 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                     return ListTile(
                       leading: Icon(
                         Icons.playlist_play,
-                        color: isAdded ? Colors.deepPurple : Colors.grey,
+                        color: isAdded ? AppColors.purple : Colors.grey,
                       ),
                       title: Text(
                         playlist['name'],
                         style: TextStyle(
-                          color: isAdded ? Colors.deepPurple : Colors.white,
+                          color: isAdded ? AppColors.purple : Colors.white,
                         ),
                       ),
                       trailing: Icon(
                         isAdded ? Icons.check : Icons.add,
-                        color: isAdded ? Colors.deepPurple : Colors.grey,
+                        color: isAdded ? AppColors.purple : Colors.grey,
                       ),
                       onTap: () {
                         if (!isAdded) {
@@ -1324,7 +1442,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Close',
-              style: TextStyle(color: Colors.deepPurple),
+              style: TextStyle(color: AppColors.purple),
             ),
           ),
         ],
@@ -1410,6 +1528,185 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     );
   }
 
+  void _showLyricsDialog(String songPath, String songTitle) {
+    final TextEditingController lyricsController = TextEditingController(
+      text: widget.lyrics[songPath] ?? '',
+    );
+    final bool hasLyrics = widget.lyrics.containsKey(songPath);
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+          decoration: BoxDecoration(
+            gradient: AppColors.darkGradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.purple.withOpacity(0.3),
+                blurRadius: 20,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: AppColors.purpleBlueGradient,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lyrics, color: Colors.white, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Lyrics',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            songTitle,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              // Lyrics editor
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.1),
+                      width: 1,
+                    ),
+                  ),
+                  child: TextField(
+                    controller: lyricsController,
+                    maxLines: null,
+                    expands: true,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      height: 1.5,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Type or paste lyrics here...\n\n'
+                          'Verse 1:\n'
+                          'Your lyrics...\n\n'
+                          'Chorus:\n'
+                          'Your lyrics...',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.3),
+                        fontSize: 14,
+                      ),
+                      border: InputBorder.none,
+                    ),
+                    textAlignVertical: TextAlignVertical.top,
+                  ),
+                ),
+              ),
+              // Action buttons
+              Container(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    if (hasLyrics)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            widget.onSaveLyrics(songPath, '');
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Lyrics removed'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.delete_outline, size: 20),
+                          label: const Text('Remove'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
+                      ),
+                    if (hasLyrics) const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          final lyrics = lyricsController.text.trim();
+                          if (lyrics.isNotEmpty) {
+                            widget.onSaveLyrics(songPath, lyrics);
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('✓ Lyrics saved'),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please enter some lyrics'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.save, size: 20),
+                        label: const Text('Save Lyrics'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _audioPlayer.dispose();
@@ -1439,7 +1736,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
           IconButton(
             icon: Icon(
               Icons.bedtime,
-              color: _sleepTimer != null ? Colors.deepPurple : Colors.white,
+              color: _sleepTimer != null ? AppColors.purple : Colors.white,
             ),
             tooltip: _sleepTimer != null 
                 ? 'Timer: ${_getRemainingTime()}'
@@ -1450,7 +1747,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
           PopupMenuButton<double>(
             icon: Icon(
               Icons.volume_up,
-              color: _volumeBoost > 1.0 ? Colors.deepPurple : Colors.white,
+              color: _volumeBoost > 1.0 ? AppColors.purple : Colors.white,
             ),
             color: Colors.grey.shade900,
             offset: const Offset(0, 50),
@@ -1469,7 +1766,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                       style: TextStyle(color: Colors.white),
                     ),
                     if (_volumeBoost == 1.0)
-                      const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                      const Icon(Icons.check, color: AppColors.purple, size: 20),
                   ],
                 ),
               ),
@@ -1483,7 +1780,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                       style: TextStyle(color: Colors.white),
                     ),
                     if (_volumeBoost == 1.5)
-                      const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                      const Icon(Icons.check, color: AppColors.purple, size: 20),
                   ],
                 ),
               ),
@@ -1497,7 +1794,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                       style: TextStyle(color: Colors.white),
                     ),
                     if (_volumeBoost == 2.0)
-                      const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                      const Icon(Icons.check, color: AppColors.purple, size: 20),
                   ],
                 ),
               ),
@@ -1571,7 +1868,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                         ElevatedButton(
                           onPressed: _requestPermissionAndScan,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurple,
+                            backgroundColor: AppColors.purple,
                           ),
                           child: const Text('Grant Permission'),
                         ),
@@ -1583,7 +1880,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(color: Colors.deepPurple),
+                        CircularProgressIndicator(color: AppColors.purple),
                         SizedBox(height: 16),
                         Text(
                           'Scanning for music files...',
@@ -1624,7 +1921,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                             icon: const Icon(Icons.refresh),
                             label: const Text('Scan Again'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.deepPurple,
+                              backgroundColor: AppColors.purple,
                             ),
                           ),
                       ],
@@ -1645,12 +1942,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                           height: 50,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.deepPurple.shade400,
-                                Colors.purple.shade800,
-                              ],
-                            ),
+                            gradient: AppColors.purpleBlueGradient,
                           ),
                           child: Icon(
                             isPlaying ? Icons.pause : Icons.music_note,
@@ -1678,6 +1970,11 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                                 song['path']!,
                                 song['title']!,
                               );
+                            } else if (value == 'lyrics') {
+                              _showLyricsDialog(
+                                song['path']!,
+                                song['title']!,
+                              );
                             } else if (value == 'delete') {
                               _showDeleteSongConfirmation(
                                 song['path']!,
@@ -1696,6 +1993,26 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                                   Text(
                                     'Add to Playlist',
                                     style: TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'lyrics',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.lyrics,
+                                    color: widget.lyrics.containsKey(song['path'])
+                                        ? AppColors.blue
+                                        : Colors.white,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    widget.lyrics.containsKey(song['path'])
+                                        ? 'Edit Lyrics'
+                                        : 'Add Lyrics',
+                                    style: const TextStyle(color: Colors.white),
                                   ),
                                 ],
                               ),
@@ -1744,12 +2061,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                         height: 50,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.deepPurple.shade400,
-                              Colors.purple.shade800,
-                            ],
-                          ),
+                          gradient: AppColors.bluePurpleGradient,
                         ),
                         child: Icon(
                           _isPlaying ? Icons.pause : Icons.play_arrow,
@@ -1786,7 +2098,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                       IconButton(
                         icon: Icon(
                           Icons.shuffle,
-                          color: _isShuffleOn ? Colors.deepPurple : Colors.grey,
+                          color: _isShuffleOn ? AppColors.purple : Colors.grey,
                         ),
                         onPressed: _toggleShuffle,
                       ),
@@ -1794,7 +2106,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                         icon: Icon(
                           _getLoopIcon(),
                           color: _loopMode != LoopMode.off
-                              ? Colors.deepPurple
+                              ? AppColors.purple
                               : Colors.grey,
                         ),
                         onPressed: _toggleLoopMode,
@@ -1802,7 +2114,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                       PopupMenuButton<double>(
                         icon: Icon(
                           Icons.volume_up,
-                          color: _volumeBoost > 1.0 ? Colors.deepPurple : Colors.grey,
+                          color: _volumeBoost > 1.0 ? AppColors.purple : Colors.grey,
                         ),
                         color: Colors.grey.shade900,
                         offset: const Offset(0, -150),
@@ -1821,7 +2133,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                                   style: TextStyle(color: Colors.white),
                                 ),
                                 if (_volumeBoost == 1.0)
-                                  const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                                  const Icon(Icons.check, color: AppColors.purple, size: 20),
                               ],
                             ),
                           ),
@@ -1835,7 +2147,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                                   style: TextStyle(color: Colors.white),
                                 ),
                                 if (_volumeBoost == 1.5)
-                                  const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                                  const Icon(Icons.check, color: AppColors.purple, size: 20),
                               ],
                             ),
                           ),
@@ -1849,7 +2161,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                                   style: TextStyle(color: Colors.white),
                                 ),
                                 if (_volumeBoost == 2.0)
-                                  const Icon(Icons.check, color: Colors.deepPurple, size: 20),
+                                  const Icon(Icons.check, color: AppColors.purple, size: 20),
                               ],
                             ),
                           ),
@@ -1870,7 +2182,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                       max: _totalDuration.inSeconds.toDouble() > 0
                           ? _totalDuration.inSeconds.toDouble()
                           : 1,
-                      activeColor: Colors.deepPurple,
+                      activeColor: AppColors.blue,
                       inactiveColor: Colors.grey.shade800,
                       onChanged: (value) async {
                         await _audioPlayer.seek(
@@ -1894,12 +2206,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                       Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.deepPurple.shade400,
-                              Colors.purple.shade800,
-                            ],
-                          ),
+                          gradient: AppColors.purpleBlueGradient,
                         ),
                         child: IconButton(
                           icon: Icon(
@@ -1975,10 +2282,10 @@ class PlaylistScreen extends StatelessWidget {
             hintText: 'Playlist name',
             hintStyle: TextStyle(color: Colors.grey),
             enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.deepPurple),
+              borderSide: BorderSide(color: AppColors.purple),
             ),
             focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.deepPurple),
+              borderSide: BorderSide(color: AppColors.purple),
             ),
           ),
           autofocus: true,
@@ -1997,7 +2304,7 @@ class PlaylistScreen extends StatelessWidget {
             },
             child: const Text(
               'Create',
-              style: TextStyle(color: Colors.deepPurple),
+              style: TextStyle(color: AppColors.purple),
             ),
           ),
         ],
@@ -2066,7 +2373,7 @@ class PlaylistScreen extends StatelessWidget {
                     icon: const Icon(Icons.add),
                     label: const Text('Create Playlist'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
+                      backgroundColor: AppColors.purple,
                     ),
                   ),
                 ],
@@ -2085,14 +2392,9 @@ class PlaylistScreen extends StatelessWidget {
                     height: 50,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      gradient: LinearGradient(
-                        colors: isSystemPlaylist
-                            ? [Colors.pink.shade400, Colors.red.shade800]
-                            : [
-                                Colors.deepPurple.shade400,
-                                Colors.purple.shade800,
-                              ],
-                      ),
+                      gradient: isSystemPlaylist
+                          ? AppColors.accentGradient
+                          : AppColors.purpleBlueGradient,
                     ),
                     child: Icon(
                       isSystemPlaylist ? Icons.favorite : Icons.playlist_play,
@@ -2256,19 +2558,19 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     return ListTile(
                       leading: Icon(
                         Icons.music_note,
-                        color: isAdded ? Colors.deepPurple : Colors.grey,
+                        color: isAdded ? AppColors.purple : Colors.grey,
                       ),
                       title: Text(
                         song['title']!,
                         style: TextStyle(
-                          color: isAdded ? Colors.deepPurple : Colors.white,
+                          color: isAdded ? AppColors.purple : Colors.white,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       trailing: Icon(
                         isAdded ? Icons.check : Icons.add,
-                        color: isAdded ? Colors.deepPurple : Colors.grey,
+                        color: isAdded ? AppColors.purple : Colors.grey,
                       ),
                       onTap: () {
                         if (!isAdded) {
@@ -2292,7 +2594,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Close',
-              style: TextStyle(color: Colors.deepPurple),
+              style: TextStyle(color: AppColors.purple),
             ),
           ),
         ],
@@ -2340,7 +2642,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       icon: const Icon(Icons.add),
                       label: const Text('Add Songs'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
+                        backgroundColor: AppColors.purple,
                       ),
                     ),
                   ],
@@ -2360,12 +2662,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     height: 50,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.deepPurple.shade400,
-                          Colors.purple.shade800,
-                        ],
-                      ),
+                      gradient: AppColors.bluePurpleGradient,
                     ),
                     child: Icon(
                       isPlaying ? Icons.pause : Icons.music_note,
@@ -2427,6 +2724,536 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 );
               },
             ),
+    );
+  }
+}
+
+
+// ─────────────────────────────────────────────
+//  BROWSE SONGS SCREEN (YouTube Search & Download)
+// ─────────────────────────────────────────────
+class BrowseSongsScreen extends StatefulWidget {
+  final VoidCallback onSongDownloaded;
+
+  const BrowseSongsScreen({
+    super.key,
+    required this.onSongDownloaded,
+  });
+
+  @override
+  State<BrowseSongsScreen> createState() => _BrowseSongsScreenState();
+}
+
+class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  final YoutubeExplode _yt = YoutubeExplode();
+  
+  List<Video> _searchResults = [];
+  bool _isSearching = false;
+  bool _isDownloading = false;
+  String _downloadingVideoId = '';
+  String _downloadingVideoTitle = '';
+  double _downloadProgress = 0.0;
+  int _downloadedBytes = 0;
+  int _totalBytes = 0;
+  
+  // HTTP client for cancellable requests
+  http.Client? _downloadClient;
+
+  // API URL - Change this based on your setup
+  // For emulator: http://10.0.2.2:3000
+  // For real device on same WiFi: http://YOUR_COMPUTER_IP:3000
+  // For production: https://your-api.railway.app
+  static const String apiUrl = 'http://10.0.2.2:3000';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _yt.close();
+    _downloadClient?.close();
+    super.dispose();
+  }
+
+  Future<void> _searchYouTube(String query) async {
+    if (query.trim().isEmpty) return;
+
+    setState(() {
+      _isSearching = true;
+      _searchResults = [];
+    });
+
+    try {
+      print('Searching YouTube for: $query');
+      
+      final searchResults = await _yt.search.search(query);
+      final videos = searchResults.take(20).toList();
+
+      setState(() {
+        _searchResults = videos;
+        _isSearching = false;
+      });
+
+      print('Found ${videos.length} results');
+    } catch (e) {
+      print('Search error: $e');
+      setState(() {
+        _isSearching = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Search failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _downloadFromAPI(Video video) async {
+    if (_isDownloading) {
+      print('Already downloading, ignoring request');
+      return;
+    }
+
+    print('=== Starting download for: ${video.title} ===');
+
+    setState(() {
+      _isDownloading = true;
+      _downloadingVideoId = video.id.value;
+      _downloadingVideoTitle = video.title;
+      _downloadProgress = 0.0;
+      _downloadedBytes = 0;
+      _totalBytes = 0;
+    });
+
+    // Create a new HTTP client for this download
+    _downloadClient = http.Client();
+
+    try {
+      final videoUrl = 'https://www.youtube.com/watch?v=${video.id.value}';
+      
+      print('Requesting download from API: $videoUrl');
+      print('API URL: $apiUrl');
+
+      // Make request to your API with streaming
+      final request = http.Request('POST', Uri.parse('$apiUrl/api/download'));
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode({'url': videoUrl});
+
+      final streamedResponse = await _downloadClient!.send(request);
+
+      print('API Response Status: ${streamedResponse.statusCode}');
+      print('Content-Length: ${streamedResponse.contentLength}');
+
+      if (streamedResponse.statusCode == 200) {
+        // Get total size if available
+        final contentLength = streamedResponse.contentLength ?? 0;
+        
+        print('Total size: ${contentLength > 0 ? _formatBytes(contentLength) : "Unknown"}');
+
+        // Collect bytes and track progress
+        final List<int> bytes = [];
+        int lastUpdateBytes = 0;
+        
+        await for (var chunk in streamedResponse.stream) {
+          // Check if download was cancelled
+          if (!_isDownloading) {
+            print('Download cancelled by user');
+            throw Exception('Download cancelled');
+          }
+
+          bytes.addAll(chunk);
+          
+          // Update UI every 100KB to avoid too many updates
+          if (bytes.length - lastUpdateBytes > 102400 || contentLength == 0) {
+            lastUpdateBytes = bytes.length;
+            
+            setState(() {
+              _downloadedBytes = bytes.length;
+              _totalBytes = contentLength > 0 ? contentLength : bytes.length;
+              if (_totalBytes > 0) {
+                _downloadProgress = _downloadedBytes / _totalBytes;
+              }
+            });
+
+            print('Downloaded: ${_formatBytes(_downloadedBytes)}${contentLength > 0 ? " / ${_formatBytes(_totalBytes)}" : ""} (${(_downloadProgress * 100).toStringAsFixed(1)}%)');
+          }
+        }
+
+        // Final update
+        setState(() {
+          _downloadedBytes = bytes.length;
+          _totalBytes = bytes.length;
+          _downloadProgress = 1.0;
+        });
+
+        print('Download complete: ${_formatBytes(bytes.length)}');
+
+        // Save the MP3 file
+        final directory = Directory('/storage/emulated/0/Music');
+        await directory.create(recursive: true);
+        
+        final fileName = _sanitizeFileName(video.title);
+        final file = File('${directory.path}/$fileName.mp3');
+        
+        print('Saving to: ${file.path}');
+        await file.writeAsBytes(bytes);
+        
+        print('✓ File saved successfully: ${file.path}');
+        print('=== Download completed successfully ===');
+        
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✓ Downloaded: ${video.title}'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+
+        // Notify parent to refresh song list
+        widget.onSongDownloaded();
+        
+      } else {
+        final errorBody = await streamedResponse.stream.bytesToString();
+        print('API Error Body: $errorBody');
+        throw Exception('API Error: ${streamedResponse.statusCode}');
+      }
+      
+    } catch (e, stackTrace) {
+      print('=== Download error ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+      
+      if (mounted && _isDownloading) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().contains('cancelled') 
+                ? 'Download cancelled' 
+                : 'Download failed: $e'),
+            backgroundColor: e.toString().contains('cancelled') 
+                ? Colors.orange 
+                : Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      // Always reset state, even if there's an error
+      print('Resetting download state...');
+      _downloadClient?.close();
+      _downloadClient = null;
+      
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadingVideoId = '';
+          _downloadingVideoTitle = '';
+          _downloadProgress = 0.0;
+          _downloadedBytes = 0;
+          _totalBytes = 0;
+        });
+      }
+      print('Download state reset complete');
+    }
+  }
+
+  void _cancelDownload() {
+    print('Cancelling download...');
+    if (_isDownloading) {
+      setState(() {
+        _isDownloading = false;
+      });
+      _downloadClient?.close();
+      _downloadClient = null;
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  String _sanitizeFileName(String fileName) {
+    // Remove invalid characters for file names
+    return fileName.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+  }
+
+  String _formatDuration(Duration? duration) {
+    if (duration == null) return '0:00';
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Browse Songs'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Column(
+        children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Search YouTube...',
+                hintStyle: TextStyle(color: Colors.grey.shade500),
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchResults = [];
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.grey.shade900,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              onSubmitted: _searchYouTube,
+              onChanged: (value) {
+                setState(() {});
+              },
+            ),
+          ),
+
+          // Search results
+          Expanded(
+            child: _isSearching
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: AppColors.purple),
+                        SizedBox(height: 16),
+                        Text(
+                          'Searching YouTube...',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  )
+                : _searchResults.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search,
+                              size: 60,
+                              color: Colors.grey.shade700,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Search for songs on YouTube',
+                              style: TextStyle(
+                                color: Colors.grey.shade500,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Downloads will be saved to Music folder',
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _searchResults.length,
+                        itemBuilder: (context, index) {
+                          final video = _searchResults[index];
+                          final isDownloading = _downloadingVideoId == video.id.value;
+
+                          return ListTile(
+                            leading: Container(
+                              width: 80,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                image: video.thumbnails.mediumResUrl.isNotEmpty
+                                    ? DecorationImage(
+                                        image: NetworkImage(
+                                          video.thumbnails.mediumResUrl,
+                                        ),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                                color: Colors.grey.shade800,
+                              ),
+                              child: video.thumbnails.mediumResUrl.isEmpty
+                                  ? const Icon(
+                                      Icons.music_note,
+                                      color: Colors.grey,
+                                    )
+                                  : null,
+                            ),
+                            title: Text(
+                              video.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              '${video.author} • ${_formatDuration(video.duration)}',
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: isDownloading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.purple,
+                                    ),
+                                  )
+                                : IconButton(
+                                    icon: const Icon(
+                                      Icons.download,
+                                      color: AppColors.purple,
+                                    ),
+                                    onPressed: _isDownloading
+                                        ? null
+                                        : () => _downloadFromAPI(video),
+                                  ),
+                          );
+                        },
+                      ),
+          ),
+
+          // Download progress indicator
+          if (_isDownloading)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade900,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Title and cancel button
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.download,
+                        color: AppColors.purple,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _downloadingVideoTitle,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _downloadProgress > 0
+                                  ? '${(_downloadProgress * 100).toStringAsFixed(1)}% complete'
+                                  : 'Starting download...',
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.red),
+                        onPressed: _cancelDownload,
+                        tooltip: 'Cancel download',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Progress bar
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: _downloadProgress > 0 ? _downloadProgress : null,
+                      backgroundColor: Colors.grey.shade800,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppColors.blue,
+                      ),
+                      minHeight: 8,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Progress percentage
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _downloadProgress > 0
+                            ? '${(_downloadProgress * 100).toStringAsFixed(1)}%'
+                            : 'Starting...',
+                        style: const TextStyle(
+                          color: AppColors.blue,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Text(
+                        'Converting to MP3...',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
