@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:async';
+import 'dart:convert';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -542,6 +546,19 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   LoopMode _loopMode = LoopMode.off;
   String _searchQuery = '';
   double _volumeBoost = 1.0; // 1.0 = 100%, 1.5 = 150%, 2.0 = 200%
+  
+  // Sleep timer
+  Timer? _sleepTimer;
+  DateTime? _sleepEndTime;
+
+  // Bluetooth auto-resume
+  StreamSubscription<BluetoothAdapterState>? _bluetoothSubscription;
+  bool _wasPlayingBeforeDisconnect = false;
+  int? _songIndexBeforeDisconnect;
+  Duration? _positionBeforeDisconnect;
+
+  static const String _cachedSongsKey = 'cached_songs_list';
+  static const String _lastScanTimeKey = 'last_scan_time';
 
   @override
   void initState() {
@@ -570,7 +587,8 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
         }
       }
     });
-    _requestPermissionAndScan();
+    _loadCachedSongsOrScan();
+    _initBluetoothMonitoring();
   }
 
   Future<void> _initAudioSession() async {
@@ -580,6 +598,164 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       // This enables better audio quality and loudness management
     } catch (e) {
       print('Error configuring audio session: $e');
+    }
+  }
+
+  void _initBluetoothMonitoring() {
+    try {
+      _bluetoothSubscription = FlutterBluePlus.adapterState.listen((state) {
+        print('Bluetooth state changed: $state');
+        
+        if (state == BluetoothAdapterState.off || state == BluetoothAdapterState.unavailable) {
+          // Bluetooth disconnected
+          if (_isPlaying) {
+            print('Bluetooth disconnected while playing - saving state');
+            _wasPlayingBeforeDisconnect = true;
+            _songIndexBeforeDisconnect = _currentlyPlaying;
+            _positionBeforeDisconnect = _currentPosition;
+          }
+        } else if (state == BluetoothAdapterState.on) {
+          // Bluetooth reconnected
+          if (_wasPlayingBeforeDisconnect && 
+              _songIndexBeforeDisconnect != null && 
+              _songIndexBeforeDisconnect! < widget.songs.length) {
+            print('Bluetooth reconnected - resuming playback');
+            
+            // Wait a bit for Bluetooth audio to be ready
+            Future.delayed(const Duration(milliseconds: 1500), () {
+              if (mounted) {
+                _resumeAfterBluetoothReconnect();
+              }
+            });
+          }
+        }
+      });
+    } catch (e) {
+      print('Error initializing Bluetooth monitoring: $e');
+    }
+  }
+
+  Future<void> _resumeAfterBluetoothReconnect() async {
+    try {
+      if (_songIndexBeforeDisconnect == null) return;
+      
+      final songPath = widget.songs[_songIndexBeforeDisconnect!]['path']!;
+      
+      print('Resuming song: $songPath at position: $_positionBeforeDisconnect');
+      
+      // Set the song
+      await _audioPlayer.setFilePath(songPath);
+      
+      // Seek to previous position if available
+      if (_positionBeforeDisconnect != null) {
+        await _audioPlayer.seek(_positionBeforeDisconnect!);
+      }
+      
+      // Apply volume boost
+      double effectiveVolume = _volumeBoost;
+      if (_volumeBoost > 1.0) {
+        effectiveVolume = 1.0 + ((_volumeBoost - 1.0) * 0.85);
+      }
+      await _audioPlayer.setVolume(effectiveVolume);
+      
+      // Start playing
+      await _audioPlayer.play();
+      
+      setState(() {
+        _currentlyPlaying = _songIndexBeforeDisconnect;
+        _isPlaying = true;
+      });
+      
+      // Reset the saved state
+      _wasPlayingBeforeDisconnect = false;
+      _songIndexBeforeDisconnect = null;
+      _positionBeforeDisconnect = null;
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bluetooth reconnected - Resuming playback'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error resuming after Bluetooth reconnect: $e');
+      _wasPlayingBeforeDisconnect = false;
+      _songIndexBeforeDisconnect = null;
+      _positionBeforeDisconnect = null;
+    }
+  }
+
+  // Load cached songs or scan if no cache exists
+  Future<void> _loadCachedSongsOrScan() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedSongsJson = prefs.getString(_cachedSongsKey);
+
+      if (cachedSongsJson != null && cachedSongsJson.isNotEmpty) {
+        // Load from cache
+        final List<dynamic> decoded = jsonDecode(cachedSongsJson);
+        final cachedSongs = decoded
+            .map((item) => Map<String, String>.from(item as Map))
+            .toList();
+
+        // Sort songs by modification date (newest first)
+        cachedSongs.sort((a, b) {
+          int dateA = int.tryParse(a['modifiedDate'] ?? '0') ?? 0;
+          int dateB = int.tryParse(b['modifiedDate'] ?? '0') ?? 0;
+          return dateB.compareTo(dateA); // Descending order (newest first)
+        });
+
+        widget.onUpdateSongs(cachedSongs);
+        
+        final lastScanTime = prefs.getInt(_lastScanTimeKey) ?? 0;
+        final lastScanDate = DateTime.fromMillisecondsSinceEpoch(lastScanTime);
+        
+        print('Loaded ${cachedSongs.length} songs from cache (last scan: $lastScanDate)');
+        
+        setState(() {
+          _hasPermission = true;
+          _isLoading = false;
+        });
+      } else {
+        // No cache, scan for songs
+        await _requestPermissionAndScan();
+      }
+    } catch (e) {
+      print('Error loading cached songs: $e');
+      // If cache fails, scan for songs
+      await _requestPermissionAndScan();
+    }
+  }
+
+  // Save songs to cache
+  Future<void> _saveSongsToCache(List<Map<String, String>> songs) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final songsJson = jsonEncode(songs);
+      await prefs.setString(_cachedSongsKey, songsJson);
+      await prefs.setInt(_lastScanTimeKey, DateTime.now().millisecondsSinceEpoch);
+      print('Saved ${songs.length} songs to cache');
+    } catch (e) {
+      print('Error saving songs to cache: $e');
+    }
+  }
+
+  // Clear cache (for debugging or manual reset)
+  // ignore: unused_element
+  Future<void> _clearCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cachedSongsKey);
+      await prefs.remove(_lastScanTimeKey);
+      print('Cache cleared');
+    } catch (e) {
+      print('Error clearing cache: $e');
     }
   }
 
@@ -641,6 +817,27 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       }
 
       widget.onUpdateSongs(foundSongs);
+      
+      // Sort songs by modification date (newest first)
+      foundSongs.sort((a, b) {
+        int dateA = int.tryParse(a['modifiedDate'] ?? '0') ?? 0;
+        int dateB = int.tryParse(b['modifiedDate'] ?? '0') ?? 0;
+        return dateB.compareTo(dateA); // Descending order (newest first)
+      });
+      
+      widget.onUpdateSongs(foundSongs);
+      
+      // Save to cache after scanning
+      await _saveSongsToCache(foundSongs);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Found ${foundSongs.length} songs'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
       print('Error scanning files: $e');
     }
@@ -684,11 +881,16 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
               print('Error getting duration for ${entity.path}: $e');
             }
 
+            // Get file modification date
+            FileStat fileStat = await entity.stat();
+            String modifiedDate = fileStat.modified.millisecondsSinceEpoch.toString();
+
             songs.add({
               'title': title,
               'artist': 'Unknown Artist',
               'path': entity.path,
               'duration': duration,
+              'modifiedDate': modifiedDate,
             });
 
             addedPaths.add(entity.path);
@@ -902,6 +1104,164 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     return 'Max Boost';
   }
 
+  void _setSleepTimer(Duration duration) {
+    // Cancel existing timer if any
+    _sleepTimer?.cancel();
+    
+    setState(() {
+      _sleepEndTime = DateTime.now().add(duration);
+    });
+
+    _sleepTimer = Timer(duration, () {
+      // Stop the music when timer expires
+      _audioPlayer.stop();
+      setState(() {
+        _isPlaying = false;
+        _sleepTimer = null;
+        _sleepEndTime = null;
+      });
+
+      // Show notification
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sleep timer finished - Music stopped'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sleep timer set for ${_formatSleepDuration(duration)}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    setState(() {
+      _sleepTimer = null;
+      _sleepEndTime = null;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sleep timer cancelled'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  String _formatSleepDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    
+    if (hours > 0) {
+      return minutes > 0 ? '${hours}h ${minutes}m' : '${hours}h';
+    }
+    return '${minutes}m';
+  }
+
+  String _getRemainingTime() {
+    if (_sleepEndTime == null) return '';
+    
+    final remaining = _sleepEndTime!.difference(DateTime.now());
+    if (remaining.isNegative) return '0m';
+    
+    final hours = remaining.inHours;
+    final minutes = remaining.inMinutes.remainder(60);
+    
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    }
+    return '${minutes}m';
+  }
+
+  void _showSleepTimerDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey.shade900,
+        title: const Text(
+          'Sleep Timer',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_sleepTimer != null) ...[
+              Text(
+                'Timer active: ${_getRemainingTime()} remaining',
+                style: const TextStyle(
+                  color: Colors.deepPurple,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _cancelSleepTimer();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  minimumSize: const Size(double.infinity, 48),
+                ),
+                child: const Text('Cancel Timer'),
+              ),
+              const SizedBox(height: 8),
+            ],
+            const Text(
+              'Set timer duration:',
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            _buildTimerOption(context, '15 minutes', const Duration(minutes: 15)),
+            const SizedBox(height: 8),
+            _buildTimerOption(context, '30 minutes', const Duration(minutes: 30)),
+            const SizedBox(height: 8),
+            _buildTimerOption(context, '45 minutes', const Duration(minutes: 45)),
+            const SizedBox(height: 8),
+            _buildTimerOption(context, '1 hour', const Duration(hours: 1)),
+            const SizedBox(height: 8),
+            _buildTimerOption(context, '2 hours', const Duration(hours: 2)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Close',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimerOption(BuildContext context, String label, Duration duration) {
+    return ElevatedButton(
+      onPressed: () {
+        Navigator.pop(context);
+        _setSleepTimer(duration);
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.deepPurple,
+        minimumSize: const Size(double.infinity, 48),
+      ),
+      child: Text(label),
+    );
+  }
+
   void _showAddToPlaylistDialog(String songPath, String songTitle) {
     showDialog(
       context: context,
@@ -1011,6 +1371,9 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                     }
                   });
 
+                  // Update cache after deletion
+                  await _saveSongsToCache(widget.songs);
+
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -1051,6 +1414,8 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   void dispose() {
     _audioPlayer.dispose();
     _searchController.dispose();
+    _sleepTimer?.cancel();
+    _bluetoothSubscription?.cancel();
     super.dispose();
   }
 
@@ -1070,6 +1435,18 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          // Sleep Timer
+          IconButton(
+            icon: Icon(
+              Icons.bedtime,
+              color: _sleepTimer != null ? Colors.deepPurple : Colors.white,
+            ),
+            tooltip: _sleepTimer != null 
+                ? 'Timer: ${_getRemainingTime()}'
+                : 'Sleep Timer',
+            onPressed: _showSleepTimerDialog,
+          ),
+          // Volume Boost
           PopupMenuButton<double>(
             icon: Icon(
               Icons.volume_up,
