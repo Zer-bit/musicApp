@@ -682,21 +682,35 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   void initState() {
     super.initState();
     _initAudioSession();
+    
+    // Optimize: Batch state updates and reduce frequency
     _audioPlayer.playerStateStream.listen((state) {
-      setState(() {
-        _isPlaying = state.playing;
-      });
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.playing;
+        });
+      }
     });
-    _audioPlayer.positionStream.listen((position) {
-      setState(() {
-        _currentPosition = position;
-      });
+    
+    // Optimize: Only update position every 500ms instead of every frame
+    _audioPlayer.positionStream
+        .where((position) => position.inMilliseconds % 500 < 100)
+        .listen((position) {
+      if (mounted) {
+        setState(() {
+          _currentPosition = position;
+        });
+      }
     });
+    
     _audioPlayer.durationStream.listen((duration) {
-      setState(() {
-        _totalDuration = duration ?? Duration.zero;
-      });
+      if (mounted) {
+        setState(() {
+          _totalDuration = duration ?? Duration.zero;
+        });
+      }
     });
+    
     _audioPlayer.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
         // Only auto-play next if not in repeat-one mode
@@ -1929,6 +1943,11 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                   )
                 : ListView.builder(
                     itemCount: filteredSongs.length,
+                    // Optimize: Fixed item height for smoother scrolling
+                    itemExtent: 72.0,
+                    // Optimize: Reduce memory usage
+                    addAutomaticKeepAlives: false,
+                    addRepaintBoundaries: true,
                     itemBuilder: (context, index) {
                       final song = filteredSongs[index];
                       // Find the original index in widget.songs
@@ -2760,11 +2779,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
   // HTTP client for cancellable requests
   http.Client? _downloadClient;
 
-  // API URL - Change this based on your setup
-  // For emulator: http://10.0.2.2:3000
-  // For real device on same WiFi: http://YOUR_COMPUTER_IP:3000
-  // For production: https://your-api.railway.app
-  static const String apiUrl = 'http://10.0.2.2:3000';
+  // API URL - Railway Production
+  static const String apiUrl = 'https://youtube-mp3-api-production.up.railway.app';
 
   @override
   void dispose() {
@@ -2853,6 +2869,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         // Collect bytes and track progress
         final List<int> bytes = [];
         int lastUpdateBytes = 0;
+        int lastUpdateTime = DateTime.now().millisecondsSinceEpoch;
         
         await for (var chunk in streamedResponse.stream) {
           // Check if download was cancelled
@@ -2863,9 +2880,14 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
 
           bytes.addAll(chunk);
           
-          // Update UI every 100KB to avoid too many updates
-          if (bytes.length - lastUpdateBytes > 102400 || contentLength == 0) {
+          // Optimize: Update UI every 100KB OR every 200ms (whichever comes first)
+          final now = DateTime.now().millisecondsSinceEpoch;
+          final timeSinceUpdate = now - lastUpdateTime;
+          final bytesSinceUpdate = bytes.length - lastUpdateBytes;
+          
+          if (bytesSinceUpdate > 102400 || timeSinceUpdate > 200 || contentLength == 0) {
             lastUpdateBytes = bytes.length;
+            lastUpdateTime = now;
             
             setState(() {
               _downloadedBytes = bytes.length;
@@ -3084,6 +3106,11 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
                       )
                     : ListView.builder(
                         itemCount: _searchResults.length,
+                        // Optimize: Fixed item height for smoother scrolling
+                        itemExtent: 88.0,
+                        // Optimize: Reduce memory usage
+                        addAutomaticKeepAlives: false,
+                        addRepaintBoundaries: true,
                         itemBuilder: (context, index) {
                           final video = _searchResults[index];
                           final isDownloading = _downloadingVideoId == video.id.value;
