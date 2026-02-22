@@ -43,6 +43,7 @@ dependencies:
   flutter_blue_plus: ^1.32.12
   youtube_explode_dart: ^2.2.1
   http: ^1.1.0
+  audio_service: ^0.18.12
 
 dev_dependencies:
   flutter_test:
