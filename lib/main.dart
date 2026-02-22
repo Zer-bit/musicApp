@@ -8,7 +8,6 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:http/http.dart' as http;
 import 'package:audio_service/audio_service.dart';
 import 'audio_handler.dart';
-import 'debugger.dart';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:async';
@@ -70,23 +69,12 @@ class GlobalAudioService {
   }
 
   Future<void> initialize(MyAudioHandler handler) async {
-    logger.log('GlobalAudioService: Initializing with handler...');
-    if (_handlerCompleter.isCompleted) {
-      logger.log('GlobalAudioService: Already initialized');
-      return;
-    }
-
     _player = handler.player;
     _handlerCompleter.complete(handler);
-    logger.log('GlobalAudioService: Handler completed in completer');
 
     await _initAudioSession();
 
     audioPlayer.playerStateStream.listen((state) {
-      print(
-        '🔊 AudioPlayer state changed: ${state.playing ? "PLAYING" : "PAUSED/STOPPED"}',
-      );
-      print('   Processing state: ${state.processingState}');
       isPlaying = state.playing;
       notifyListeners();
     });
@@ -123,7 +111,7 @@ class GlobalAudioService {
         audioPlayer.pause();
       });
     } catch (e) {
-      print('Error configuring audio session: $e');
+      // Error configuring audio session
     }
   }
 
@@ -148,7 +136,7 @@ class GlobalAudioService {
         }
       });
     } catch (e) {
-      print('Error initializing Bluetooth monitoring: $e');
+      // Error initializing Bluetooth monitoring
     }
   }
 
@@ -176,7 +164,6 @@ class GlobalAudioService {
       songIndexBeforeDisconnect = null;
       positionBeforeDisconnect = null;
     } catch (e) {
-      print('Error resuming after Bluetooth reconnect: $e');
       wasPlayingBeforeDisconnect = false;
       songIndexBeforeDisconnect = null;
       positionBeforeDisconnect = null;
@@ -185,19 +172,12 @@ class GlobalAudioService {
 
   Future<void> playSong(String path, int index) async {
     try {
-      logger.log('GlobalAudioService: playSong -> $path');
-
-      // Wait for handler to be ready
-      logger.log('GlobalAudioService: Waiting for handler...');
       final handler = await _audioHandler;
-      logger.log('GlobalAudioService: Handler obtained');
 
       if (currentlyPlaying == index) {
         if (isPlaying) {
-          print('   Action: Pausing current song');
           await handler.pause();
         } else {
-          print('   Action: Resuming current song');
           await handler.play();
         }
         return;
@@ -207,9 +187,6 @@ class GlobalAudioService {
         onIncrementPlayCount!(path);
       }
 
-      print('   Action: Playing new song');
-      await handler.stop();
-
       currentlyPlaying = index;
       currentPosition = Duration.zero;
       notifyListeners();
@@ -217,26 +194,21 @@ class GlobalAudioService {
       final song = currentPlaylist[index];
       final title = song['title'] ?? 'Unknown';
 
-      logger.log('GlobalAudioService: Setting source & metadata...');
       await handler.setAudioSource(
         path,
         MediaItem(
           id: path,
           title: title,
-          artist: 'Jezsic Music Player',
+          artist: song['artist'] ?? 'Unknown Artist',
           duration: totalDuration,
         ),
       );
 
-      logger.log('GlobalAudioService: Starting player.play()...');
       await handler.play();
-      logger.log('GlobalAudioService: play() call finished');
 
-      print('   ✅ Playback started successfully');
-    } catch (e, stackTrace) {
-      print('   ❌ ERROR playing song');
-      print('   Error: $e');
-      print('   Stack trace: $stackTrace');
+      await handler.play();
+    } catch (e) {
+      // Error playing song
     }
   }
 
@@ -408,23 +380,19 @@ class AppColors {
 Future<void> main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
-    print('=== APP STARTING ===');
 
     // Start the app immediately to avoid launch freeze
     runApp(const MyApp());
 
     // Initialize audio services in the background
     _initializeAudioServices();
-  } catch (e, stack) {
-    print('Error in main: $e');
-    print(stack);
+  } catch (_) {
+    // Silently handle startup errors
   }
 }
 
 Future<void> _initializeAudioServices() async {
   try {
-    logger.log('Main: Starting background audio init...');
-
     final audioHandler = await AudioService.init(
       builder: () => MyAudioHandler(),
       config: const AudioServiceConfig(
@@ -432,17 +400,14 @@ Future<void> _initializeAudioServices() async {
         androidNotificationChannelName: 'Music Playback',
         androidNotificationOngoing: true,
         androidStopForegroundOnPause: true,
-        androidNotificationIcon: 'mipmap/jezsic',
+        androidNotificationIcon: 'drawable/ic_music_notification',
         androidShowNotificationBadge: true,
       ),
     );
-    logger.log('Main: AudioService.init finished');
 
     await GlobalAudioService().initialize(audioHandler);
-    logger.log('Main: GlobalAudioService.initialize finished');
-  } catch (e, stack) {
-    logger.log('Main: Initialization error: $e');
-    print(stack);
+  } catch (_) {
+    // Silently handle initialization errors
   }
 }
 
@@ -463,94 +428,12 @@ class MyApp extends StatelessWidget {
           surface: AppColors.surface,
         ),
       ),
-      builder: (context, child) {
-        return Stack(children: [child!, const GlobalDebugTrigger()]);
-      },
       home: const LoadingScreen(),
     );
   }
 }
 
-class GlobalDebugTrigger extends StatelessWidget {
-  const GlobalDebugTrigger({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: 0,
-      right: 0,
-      child: GestureDetector(
-        onLongPress: () {
-          showDialog(
-            context: context,
-            builder: (context) => const DebugConsoleModal(),
-          );
-        },
-        child: Container(width: 50, height: 50, color: Colors.transparent),
-      ),
-    );
-  }
-}
-
-class DebugConsoleModal extends StatelessWidget {
-  const DebugConsoleModal({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog.fullscreen(
-      backgroundColor: Colors.black.withOpacity(0.9),
-      child: Column(
-        children: [
-          AppBar(
-            backgroundColor: Colors.grey.shade900,
-            title: const Text('Debug Console'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.delete),
-                onPressed: () => logger.clear(),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-          Expanded(
-            child: StreamBuilder<List<String>>(
-              stream: logger.logStream,
-              initialData: logger.currentLogs,
-              builder: (context, snapshot) {
-                final logs = snapshot.data ?? [];
-                return ListView.builder(
-                  padding: const EdgeInsets.all(8),
-                  itemCount: logs.length,
-                  itemBuilder: (context, index) {
-                    final log = logs[logs.length - 1 - index];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text(
-                        log,
-                        style: const TextStyle(
-                          color: Colors.greenAccent,
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-//  SPLASH SCREEN
-// ─────────────────────────────────────────────
+// ── SPLASH SCREEN ──
 class LoadingScreen extends StatefulWidget {
   const LoadingScreen({super.key});
 
@@ -643,24 +526,20 @@ class _LoadingScreenState extends State<LoadingScreen>
     if (!mounted) return;
     _textController.forward();
 
-    // Hold on screen
-    await Future.delayed(const Duration(milliseconds: 2200));
+    // Hold on screen (Reduced from 2200ms)
+    await Future.delayed(const Duration(milliseconds: 1000));
     if (!mounted) return;
 
     // WAIT for audio service to be ready before proceeding
-    print('⌛ LoadingScreen: Waiting for Audio Service...');
     int timeout = 0;
-    while (!GlobalAudioService().isReady && timeout < 10) {
-      await Future.delayed(const Duration(milliseconds: 500));
+    while (!GlobalAudioService().isReady && timeout < 5) {
+      await Future.delayed(const Duration(milliseconds: 200));
       timeout++;
     }
-    print(
-      '✅ LoadingScreen: Audio Service ${GlobalAudioService().isReady ? "Ready" : "Timed Out"}',
-    );
 
     // Play exit animation
     _exitController.forward();
-    await Future.delayed(const Duration(milliseconds: 450));
+    await Future.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
 
     Navigator.pushReplacement(
@@ -742,12 +621,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                   // ── Vinyl record ──
                   Center(
                     child: GestureDetector(
-                      onDoubleTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => const DebugConsoleModal(),
-                        );
-                      },
+                      onDoubleTap: () {},
                       child: Transform.rotate(
                         angle: _vinylController.value * 2 * math.pi,
                         child: CustomPaint(
@@ -767,7 +641,9 @@ class _LoadingScreenState extends State<LoadingScreen>
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.deepPurple.shade400.withOpacity(0.8),
+                            color: Colors.deepPurple.shade400.withValues(
+                              alpha: 0.8,
+                            ),
                             blurRadius: 24,
                             spreadRadius: 4,
                           ),
@@ -904,7 +780,7 @@ class _VinylPainter extends CustomPainter {
       ..shader = RadialGradient(
         colors: [
           Colors.transparent,
-          AppColors.purple.withOpacity(0.18),
+          AppColors.purple.withValues(alpha: 0.18),
           Colors.transparent,
         ],
         stops: const [0.35, 0.65, 1.0],
@@ -1018,7 +894,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final lyricsJson = jsonEncode(_lyrics);
       await prefs.setString('cached_lyrics', lyricsJson);
     } catch (e) {
-      print('Error saving lyrics: $e');
+      // Error saving lyrics
     }
   }
 
@@ -1036,7 +912,7 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (e) {
-      print('Error loading lyrics: $e');
+      // Error loading lyrics
     }
   }
 
@@ -1074,7 +950,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ];
 
-    print('🏠 HomeScreen: Screens created and cached in initState');
+    // Create screens once and cache them
   }
 
   @override
@@ -1092,11 +968,9 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) {
-          print('🏠 HomeScreen: Tab changed from $_selectedIndex to $index');
           setState(() {
             _selectedIndex = index;
           });
-          print('🏠 HomeScreen: IndexedStack will now show screen $index');
         },
         backgroundColor: Colors.grey.shade900,
         selectedItemColor: AppColors.blue,
@@ -1166,15 +1040,16 @@ class _AllSongsScreenState extends State<AllSongsScreen>
   void initState() {
     super.initState();
 
-    print('📱 AllSongsScreen: initState called');
-
     // Only set the callback, NOT the playlist
     _audioService.onIncrementPlayCount = widget.onIncrementPlayCount;
 
     // Listen to audio service changes
     _audioService.addListener(_onAudioServiceUpdate);
 
-    _loadCachedSongsOrScan();
+    // DEFER loading to avoid blocking transition animation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCachedSongsOrScan();
+    });
   }
 
   void _onAudioServiceUpdate() {
@@ -1209,13 +1084,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
 
         widget.onUpdateSongs(cachedSongs);
 
-        final lastScanTime = prefs.getInt(_lastScanTimeKey) ?? 0;
-        final lastScanDate = DateTime.fromMillisecondsSinceEpoch(lastScanTime);
-
-        print(
-          'Loaded ${cachedSongs.length} songs from cache (last scan: $lastScanDate)',
-        );
-
         setState(() {
           _hasPermission = true;
           _isLoading = false;
@@ -1225,8 +1093,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         await _requestPermissionAndScan();
       }
     } catch (e) {
-      print('Error loading cached songs: $e');
-      // If cache fails, scan for songs
+      // Error loading cached songs
       await _requestPermissionAndScan();
     }
   }
@@ -1241,9 +1108,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         _lastScanTimeKey,
         DateTime.now().millisecondsSinceEpoch,
       );
-      print('Saved ${songs.length} songs to cache');
     } catch (e) {
-      print('Error saving songs to cache: $e');
+      // Error saving songs to cache
     }
   }
 
@@ -1254,9 +1120,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_cachedSongsKey);
       await prefs.remove(_lastScanTimeKey);
-      print('Cache cleared');
     } catch (e) {
-      print('Error clearing cache: $e');
+      // Error clearing cache
     }
   }
 
@@ -1270,7 +1135,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
       final notificationStatus = await Permission.notification.status;
       if (!notificationStatus.isGranted) {
         await Permission.notification.request();
-        print('Notification permission requested');
       }
     }
 
@@ -1349,7 +1213,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         );
       }
     } catch (e) {
-      print('Error scanning files: $e');
+      // Error scanning files
     }
   }
 
@@ -1388,7 +1252,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
               }
               await tempPlayer.dispose();
             } catch (e) {
-              print('Error getting duration for ${entity.path}: $e');
+              // Error getting duration
             }
 
             // Get file modification date
@@ -1409,15 +1273,11 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         }
       }
     } catch (e) {
-      print('Error scanning directory ${dir.path}: $e');
+      // Error scanning directory
     }
   }
 
   Future<void> _playSong(String path, int index) async {
-    print(
-      '📱 AllSongsScreen._playSong called - setting playlist and playing song',
-    );
-
     // Set the playlist as a COPY so clearing _songs doesn't interrupt playback
     _audioService.currentPlaylist = List.from(widget.songs);
 
@@ -1689,7 +1549,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                   await _saveSongsToCache(widget.songs);
 
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    final messenger = ScaffoldMessenger.of(context);
+                    messenger.showSnackBar(
                       SnackBar(
                         content: Text('Deleted $songTitle'),
                         backgroundColor: Colors.red,
@@ -1698,7 +1559,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                   }
                 } else {
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    final messenger = ScaffoldMessenger.of(context);
+                    messenger.showSnackBar(
                       const SnackBar(
                         content: Text('File not found'),
                         backgroundColor: Colors.red,
@@ -1708,7 +1570,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  final messenger = ScaffoldMessenger.of(context);
+                  messenger.showSnackBar(
                     SnackBar(
                       content: Text('Error deleting file: $e'),
                       backgroundColor: Colors.red,
@@ -1753,7 +1616,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.purple.withOpacity(0.3),
+                  color: AppColors.purple.withValues(alpha: 0.3),
                   blurRadius: 20,
                   spreadRadius: 5,
                 ),
@@ -1819,10 +1682,10 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                     margin: EdgeInsets.all(isSmallScreen ? 12 : 16),
                     padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withValues(alpha: 0.1),
                         width: 1,
                       ),
                     ),
@@ -1843,7 +1706,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                             'Chorus:\n'
                             'Your lyrics...',
                         hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           fontSize: isSmallScreen ? 12 : 14,
                         ),
                         border: InputBorder.none,
@@ -2007,9 +1870,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
 
   @override
   void dispose() {
-    print(
-      '📱 AllSongsScreen: dispose called - THIS SHOULD NOT HAPPEN WHEN SWITCHING TABS!',
-    );
     _audioService.removeListener(_onAudioServiceUpdate);
     _searchController.dispose();
     super.dispose();
@@ -2359,15 +2219,24 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
         Navigator.push(
           context,
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const NowPlayingScreen(),
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                const NowPlayingScreen(),
             transitionDuration: const Duration(milliseconds: 300),
-            transitionsBuilder: (_, anim, __, child) => SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 1),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
-              child: child,
-            ),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) =>
+                    SlideTransition(
+                      position:
+                          Tween<Offset>(
+                            begin: const Offset(0, 1),
+                            end: Offset.zero,
+                          ).animate(
+                            CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOut,
+                            ),
+                          ),
+                      child: child,
+                    ),
           ),
         );
       },
@@ -2377,7 +2246,7 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
           color: Colors.grey.shade900,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -2734,8 +2603,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.purple.withOpacity(
-                                  isPlaying ? 0.6 : 0.2,
+                                color: AppColors.purple.withValues(
+                                  alpha: isPlaying ? 0.6 : 0.2,
                                 ),
                                 blurRadius: isPlaying ? 40 : 20,
                                 spreadRadius: isPlaying ? 8 : 2,
@@ -2754,7 +2623,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: Colors.white.withOpacity(0.05),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.05,
+                                      ),
                                       width: 1,
                                     ),
                                   ),
@@ -2861,7 +2732,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         activeTrackColor: AppColors.blue,
                         inactiveTrackColor: Colors.grey.shade800,
                         thumbColor: Colors.white,
-                        overlayColor: AppColors.blue.withOpacity(0.2),
+                        overlayColor: AppColors.blue.withValues(alpha: 0.2),
                       ),
                       child: Slider(
                         value: position.inSeconds.toDouble().clamp(0.0, maxSec),
@@ -2938,7 +2809,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         gradient: AppColors.purpleBlueGradient,
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.purple.withOpacity(0.5),
+                            color: AppColors.purple.withValues(alpha: 0.5),
                             blurRadius: 20,
                             spreadRadius: 2,
                           ),
@@ -3529,8 +3400,6 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
     });
 
     try {
-      print('Searching YouTube for: $query');
-
       final searchResults = await _yt.search.search(query);
       final videos = searchResults.take(20).toList();
 
@@ -3538,10 +3407,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         _searchResults = videos;
         _isSearching = false;
       });
-
-      print('Found ${videos.length} results');
     } catch (e) {
-      print('Search error: $e');
+      // Search failed
       setState(() {
         _isSearching = false;
       });
@@ -3556,11 +3423,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
 
   Future<void> _downloadFromAPI(Video video) async {
     if (_isDownloading) {
-      print('Already downloading, ignoring request');
       return;
     }
-
-    print('=== Starting download for: ${video.title} ===');
 
     setState(() {
       _isDownloading = true;
@@ -3577,9 +3441,6 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
     try {
       final videoUrl = 'https://www.youtube.com/watch?v=${video.id.value}';
 
-      print('Requesting download from API: $videoUrl');
-      print('API URL: $apiUrl');
-
       // Make request to your API with streaming
       final request = http.Request('POST', Uri.parse('$apiUrl/api/download'));
       request.headers['Content-Type'] = 'application/json';
@@ -3587,16 +3448,9 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
 
       final streamedResponse = await _downloadClient!.send(request);
 
-      print('API Response Status: ${streamedResponse.statusCode}');
-      print('Content-Length: ${streamedResponse.contentLength}');
-
       if (streamedResponse.statusCode == 200) {
         // Get total size if available
         final contentLength = streamedResponse.contentLength ?? 0;
-
-        print(
-          'Total size: ${contentLength > 0 ? _formatBytes(contentLength) : "Unknown"}',
-        );
 
         // Collect bytes and track progress
         final List<int> bytes = [];
@@ -3606,7 +3460,6 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         await for (var chunk in streamedResponse.stream) {
           // Check if download was cancelled
           if (!_isDownloading) {
-            print('Download cancelled by user');
             throw Exception('Download cancelled');
           }
 
@@ -3631,9 +3484,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
               }
             });
 
-            print(
-              'Downloaded: ${_formatBytes(_downloadedBytes)}${contentLength > 0 ? " / ${_formatBytes(_totalBytes)}" : ""} (${(_downloadProgress * 100).toStringAsFixed(1)}%)',
-            );
+            // Progress update happens in UI via setState
           }
         }
 
@@ -3644,8 +3495,6 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
           _downloadProgress = 1.0;
         });
 
-        print('Download complete: ${_formatBytes(bytes.length)}');
-
         // Save the MP3 file
         final directory = Directory('/storage/emulated/0/Music');
         await directory.create(recursive: true);
@@ -3653,11 +3502,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         final fileName = _sanitizeFileName(video.title);
         final file = File('${directory.path}/$fileName.mp3');
 
-        print('Saving to: ${file.path}');
         await file.writeAsBytes(bytes);
-
-        print('✓ File saved successfully: ${file.path}');
-        print('=== Download completed successfully ===');
 
         // Show success message
         if (mounted) {
@@ -3673,15 +3518,9 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         // Notify parent to refresh song list
         widget.onSongDownloaded();
       } else {
-        final errorBody = await streamedResponse.stream.bytesToString();
-        print('API Error Body: $errorBody');
         throw Exception('API Error: ${streamedResponse.statusCode}');
       }
-    } catch (e, stackTrace) {
-      print('=== Download error ===');
-      print('Error: $e');
-      print('Stack trace: $stackTrace');
-
+    } catch (e) {
       if (mounted && _isDownloading) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3699,7 +3538,6 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
       }
     } finally {
       // Always reset state, even if there's an error
-      print('Resetting download state...');
       _downloadClient?.close();
       _downloadClient = null;
 
@@ -3713,12 +3551,10 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
           _totalBytes = 0;
         });
       }
-      print('Download state reset complete');
     }
   }
 
   void _cancelDownload() {
-    print('Cancelling download...');
     if (_isDownloading) {
       setState(() {
         _isDownloading = false;
@@ -3726,12 +3562,6 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
       _downloadClient?.close();
       _downloadClient = null;
     }
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
   String _sanitizeFileName(String fileName) {
@@ -3921,7 +3751,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
                 color: Colors.grey.shade900,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     blurRadius: 10,
                     offset: const Offset(0, -2),
                   ),

@@ -1,22 +1,17 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
-import 'debugger.dart';
 import 'main.dart' as importMain;
 
 class MyAudioHandler extends BaseAudioHandler with SeekHandler {
   final _player = AudioPlayer();
 
   MyAudioHandler() {
-    logger.log('MyAudioHandler: Initializing listeners...');
-
     // Combine multiple streams for a more robust PlaybackState
     _player.playbackEventStream.listen((_) => _updatePlaybackState());
     _player.playerStateStream.listen((_) => _updatePlaybackState());
     _player.positionStream.listen((_) => _updatePlaybackState());
     _player.bufferedPositionStream.listen((_) => _updatePlaybackState());
     _player.speedStream.listen((_) => _updatePlaybackState());
-
-    logger.log('MyAudioHandler: Listeners ready');
   }
 
   void _updatePlaybackState() {
@@ -98,13 +93,10 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   // Method to set the file path and metadata
   Future<void> setAudioSource(String path, MediaItem item) async {
-    logger.log('MyAudioHandler: Setting audio source - ${item.title}');
     updateMediaItem(item);
     try {
       await _player.setFilePath(path);
-      logger.log('MyAudioHandler: File path set successfully');
     } catch (e) {
-      logger.log('MyAudioHandler: Error setting file path: $e');
       rethrow;
     }
   }
