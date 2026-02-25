@@ -3441,16 +3441,38 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
     try {
       final videoUrl = 'https://www.youtube.com/watch?v=${video.id.value}';
 
-      // Make request to your API with streaming
+      debugPrint('🌐 Attempting to download: ${video.title}');
+      debugPrint('🌐 Video URL: $videoUrl');
+      debugPrint('🌐 API URL: $apiUrl');
+
+      // Make request to your API with streaming and timeout
       final request = http.Request('POST', Uri.parse('$apiUrl/api/download'));
       request.headers['Content-Type'] = 'application/json';
+      request.headers['Accept'] = 'audio/mpeg';
       request.body = jsonEncode({'url': videoUrl});
 
-      final streamedResponse = await _downloadClient!.send(request);
+      debugPrint('🌐 Sending request to API...');
+
+      final streamedResponse = await _downloadClient!
+          .send(request)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw Exception(
+                'Connection timeout. Please check your internet connection.',
+              );
+            },
+          );
+
+      debugPrint('🌐 API Response Status: ${streamedResponse.statusCode}');
 
       if (streamedResponse.statusCode == 200) {
         // Get total size if available
         final contentLength = streamedResponse.contentLength ?? 0;
+
+        debugPrint(
+          '🌐 Content-Length: ${contentLength > 0 ? "$contentLength bytes" : "Unknown"}',
+        );
 
         // Collect bytes and track progress
         final List<int> bytes = [];
@@ -3460,6 +3482,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         await for (var chunk in streamedResponse.stream) {
           // Check if download was cancelled
           if (!_isDownloading) {
+            debugPrint('🌐 Download cancelled by user');
             throw Exception('Download cancelled');
           }
 
@@ -3483,8 +3506,6 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
                 _downloadProgress = _downloadedBytes / _totalBytes;
               }
             });
-
-            // Progress update happens in UI via setState
           }
         }
 
@@ -3495,14 +3516,36 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
           _downloadProgress = 1.0;
         });
 
-        // Save the MP3 file
-        final directory = Directory('/storage/emulated/0/Music');
+        debugPrint('🌐 Download complete: ${bytes.length} bytes');
+
+        // Validate that we actually got MP3 data
+        if (bytes.length < 1000) {
+          throw Exception(
+            'Downloaded file is too small (${bytes.length} bytes). The API may have returned an error.',
+          );
+        }
+
+        // Save the MP3 file — platform-specific directory
+        final String saveDirPath;
+        if (Platform.isMacOS) {
+          final home = Platform.environment['HOME'] ?? '';
+          saveDirPath = '$home/Music';
+        } else if (Platform.isAndroid) {
+          saveDirPath = '/storage/emulated/0/Music';
+        } else {
+          throw Exception('Unsupported platform');
+        }
+
+        final directory = Directory(saveDirPath);
         await directory.create(recursive: true);
 
         final fileName = _sanitizeFileName(video.title);
         final file = File('${directory.path}/$fileName.mp3');
 
+        debugPrint('🌐 Saving to: ${file.path}');
         await file.writeAsBytes(bytes);
+
+        debugPrint('✅ File saved successfully');
 
         // Show success message
         if (mounted) {
@@ -3517,22 +3560,66 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
 
         // Notify parent to refresh song list
         widget.onSongDownloaded();
+      } else if (streamedResponse.statusCode == 404) {
+        throw Exception(
+          'API endpoint not found. The download service may be unavailable.',
+        );
+      } else if (streamedResponse.statusCode == 429) {
+        throw Exception(
+          'Too many requests. Please wait a moment and try again.',
+        );
+      } else if (streamedResponse.statusCode >= 500) {
+        throw Exception(
+          'Server error (${streamedResponse.statusCode}). The download service may be down.',
+        );
       } else {
-        throw Exception('API Error: ${streamedResponse.statusCode}');
+        // Read error message from response if available
+        final errorBody = await streamedResponse.stream.bytesToString();
+        debugPrint('🌐 Error response body: $errorBody');
+        throw Exception(
+          'API Error ${streamedResponse.statusCode}: ${errorBody.isNotEmpty ? errorBody : "Unknown error"}',
+        );
+      }
+    } on TimeoutException catch (e) {
+      debugPrint('❌ Timeout error: $e');
+      if (mounted && _isDownloading) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Connection timeout. Please check your internet connection and try again.',
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } on SocketException catch (e) {
+      debugPrint('❌ Network error: $e');
+      if (mounted && _isDownloading) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No internet connection. Please check your network and try again.',
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
       }
     } catch (e) {
+      debugPrint('❌ Download error: $e');
       if (mounted && _isDownloading) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               e.toString().contains('cancelled')
                   ? 'Download cancelled'
-                  : 'Download failed: $e',
+                  : 'Download failed: ${e.toString().replaceAll("Exception: ", "")}',
             ),
             backgroundColor: e.toString().contains('cancelled')
                 ? Colors.orange
                 : Colors.red,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
