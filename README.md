@@ -1,2 +1,2 @@
 # musicApp
-developed a music app mobile
+developed a music player app mobile
