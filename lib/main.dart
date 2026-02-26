@@ -3117,6 +3117,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   bool get wantKeepAlive => true; // Keep this widget alive
 
   final GlobalAudioService _audioService = GlobalAudioService();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -3133,6 +3135,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   @override
   void dispose() {
     _audioService.removeListener(_onAudioServiceUpdate);
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -3238,115 +3241,177 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                 ),
               ],
       ),
-      body: playlistSongs.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.music_note, size: 60, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Text(
-                    widget.isSystemPlaylist
-                        ? 'Play songs to add them to Favorites'
-                        : 'No songs in this playlist',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  if (!widget.isSystemPlaylist) ...[
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: _showAddSongsDialog,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add Songs'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.purple,
-                      ),
-                    ),
-                  ],
-                ],
+      body: Column(
+        children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Search in playlist...',
+                hintStyle: TextStyle(color: Colors.grey.shade500),
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.grey.shade900,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
-            )
-          : ListView.builder(
-              itemCount: playlistSongs.length,
-              itemBuilder: (context, index) {
-                final song = playlistSongs[index];
-                // Check if this song is currently playing in the global service
-                final songPath = song['path']!;
-                final globalIndex = _audioService.currentPlaylist.indexWhere(
-                  (s) => s['path'] == songPath,
-                );
-                final isCurrentSong =
-                    globalIndex != -1 &&
-                    _audioService.currentlyPlaying == globalIndex;
-                final isPlaying = isCurrentSong && _audioService.isPlaying;
-
-                return ListTile(
-                  leading: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      gradient: AppColors.bluePurpleGradient,
-                    ),
-                    child: Icon(
-                      isPlaying ? Icons.pause : Icons.music_note,
-                      color: Colors.white,
-                    ),
-                  ),
-                  title: Text(
-                    song['title']!,
-                    style: const TextStyle(color: Colors.white),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    song['artist']!,
-                    style: const TextStyle(color: Colors.grey),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: widget.isSystemPlaylist
-                      ? Text(
-                          '${widget.playCount[song['path']] ?? 0} plays',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+            ),
+          ),
+          Expanded(
+            child: playlistSongs.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _searchQuery.isEmpty
+                              ? Icons.music_note
+                              : Icons.search_off,
+                          size: 60,
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchQuery.isEmpty
+                              ? (widget.isSystemPlaylist
+                                    ? 'Play songs to add them to Favorites'
+                                    : 'No songs in this playlist')
+                              : 'No songs match your search',
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                        if (_searchQuery.isEmpty &&
+                            !widget.isSystemPlaylist) ...[
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _showAddSongsDialog,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Songs'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.purple,
+                            ),
                           ),
-                        )
-                      : PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert, color: Colors.grey),
-                          color: Colors.grey.shade900,
-                          onSelected: (value) {
-                            if (value == 'remove') {
-                              widget.onRemoveSong(song['path']!);
-                              setState(() {});
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Removed ${song['title']}'),
-                                  duration: const Duration(seconds: 1),
+                        ],
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: playlistSongs.length,
+                    itemBuilder: (context, index) {
+                      final song = playlistSongs[index];
+                      // Check if this song is currently playing in the global service
+                      final songPath = song['path']!;
+                      final globalIndex = _audioService.currentPlaylist
+                          .indexWhere((s) => s['path'] == songPath);
+                      final isCurrentSong =
+                          globalIndex != -1 &&
+                          _audioService.currentlyPlaying == globalIndex;
+                      final isPlaying =
+                          isCurrentSong && _audioService.isPlaying;
+
+                      return ListTile(
+                        leading: Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            gradient: AppColors.bluePurpleGradient,
+                          ),
+                          child: Icon(
+                            isPlaying ? Icons.pause : Icons.music_note,
+                            color: Colors.white,
+                          ),
+                        ),
+                        title: Text(
+                          song['title']!,
+                          style: const TextStyle(color: Colors.white),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          song['artist']!,
+                          style: const TextStyle(color: Colors.grey),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: widget.isSystemPlaylist
+                            ? Text(
+                                '${widget.playCount[song['path']] ?? 0} plays',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
                                 ),
-                              );
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'remove',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.remove_circle, color: Colors.red),
-                                  SizedBox(width: 12),
-                                  Text(
-                                    'Remove from Playlist',
-                                    style: TextStyle(color: Colors.red),
+                              )
+                            : PopupMenuButton<String>(
+                                icon: const Icon(
+                                  Icons.more_vert,
+                                  color: Colors.grey,
+                                ),
+                                color: Colors.grey.shade900,
+                                onSelected: (value) {
+                                  if (value == 'remove') {
+                                    widget.onRemoveSong(song['path']!);
+                                    setState(() {});
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Removed ${song['title']}',
+                                        ),
+                                        duration: const Duration(seconds: 1),
+                                      ),
+                                    );
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'remove',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.remove_circle,
+                                          color: Colors.red,
+                                        ),
+                                        SizedBox(width: 12),
+                                        Text(
+                                          'Remove from Playlist',
+                                          style: TextStyle(color: Colors.red),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
-                        ),
-                  onTap: () => _playSong(song['path']!, index),
-                );
-              },
-            ),
+                        onTap: () => _playSong(song['path']!, index),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3683,8 +3748,11 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
                 hintText: 'Search YouTube...',
                 hintStyle: TextStyle(color: Colors.grey.shade500),
                 prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_searchController.text.isNotEmpty)
+                      IconButton(
                         icon: const Icon(Icons.clear, color: Colors.grey),
                         onPressed: () {
                           setState(() {
@@ -3692,8 +3760,13 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
                             _searchResults = [];
                           });
                         },
-                      )
-                    : null,
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.search, color: AppColors.purple),
+                      onPressed: () => _searchYouTube(_searchController.text),
+                    ),
+                  ],
+                ),
                 filled: true,
                 fillColor: Colors.grey.shade900,
                 border: OutlineInputBorder(
