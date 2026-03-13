@@ -174,11 +174,28 @@ class GlobalAudioService {
     try {
       final handler = await _audioHandler;
 
-      if (currentlyPlaying == index) {
-        if (isPlaying) {
+      // Check if the requested song is already playing (by path)
+      bool isSameSong = false;
+      if (currentlyPlaying != null &&
+          currentlyPlaying! < currentPlaylist.length) {
+        if (currentPlaylist[currentlyPlaying!]['path'] == path) {
+          isSameSong = true;
+        }
+      }
+
+      if (isSameSong) {
+        // Toggle based on actual player status to avoid sync issues
+        if (audioPlayer.playing) {
           await handler.pause();
+          isPlaying = false;
         } else {
           await handler.play();
+          isPlaying = true;
+        }
+        // Sync index/ui in case it was called from a different playlist context
+        if (currentlyPlaying != index) {
+          currentlyPlaying = index;
+          notifyListeners();
         }
         return;
       }
@@ -200,11 +217,9 @@ class GlobalAudioService {
           id: path,
           title: title,
           artist: song['artist'] ?? 'Unknown Artist',
-          duration: totalDuration,
+          duration: Duration.zero,
         ),
       );
-
-      await handler.play();
 
       await handler.play();
     } catch (e) {
@@ -297,8 +312,10 @@ class GlobalAudioService {
 
     sleepEndTime = DateTime.now().add(duration);
 
-    sleepTimer = Timer(duration, () {
-      audioPlayer.stop();
+    sleepTimer = Timer(duration, () async {
+      final handler = await _audioHandler;
+      await handler.pause();
+      // Force sync in case stream is slow
       isPlaying = false;
       sleepTimer = null;
       sleepEndTime = null;
