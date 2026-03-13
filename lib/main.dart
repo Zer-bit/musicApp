@@ -174,11 +174,28 @@ class GlobalAudioService {
     try {
       final handler = await _audioHandler;
 
-      if (currentlyPlaying == index) {
-        if (isPlaying) {
+      // Check if the requested song is already playing (by path)
+      bool isSameSong = false;
+      if (currentlyPlaying != null &&
+          currentlyPlaying! < currentPlaylist.length) {
+        if (currentPlaylist[currentlyPlaying!]['path'] == path) {
+          isSameSong = true;
+        }
+      }
+
+      if (isSameSong) {
+        // Toggle based on actual player status to avoid sync issues
+        if (audioPlayer.playing) {
           await handler.pause();
+          isPlaying = false;
         } else {
           await handler.play();
+          isPlaying = true;
+        }
+        // Sync index/ui in case it was called from a different playlist context
+        if (currentlyPlaying != index) {
+          currentlyPlaying = index;
+          notifyListeners();
         }
         return;
       }
@@ -200,11 +217,9 @@ class GlobalAudioService {
           id: path,
           title: title,
           artist: song['artist'] ?? 'Unknown Artist',
-          duration: totalDuration,
+          duration: Duration.zero,
         ),
       );
-
-      await handler.play();
 
       await handler.play();
     } catch (e) {
@@ -297,8 +312,10 @@ class GlobalAudioService {
 
     sleepEndTime = DateTime.now().add(duration);
 
-    sleepTimer = Timer(duration, () {
-      audioPlayer.stop();
+    sleepTimer = Timer(duration, () async {
+      final handler = await _audioHandler;
+      await handler.pause();
+      // Force sync in case stream is slow
       isPlaying = false;
       sleepTimer = null;
       sleepEndTime = null;
@@ -3117,6 +3134,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   bool get wantKeepAlive => true; // Keep this widget alive
 
   final GlobalAudioService _audioService = GlobalAudioService();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -3133,6 +3152,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   @override
   void dispose() {
     _audioService.removeListener(_onAudioServiceUpdate);
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -3238,115 +3258,177 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                 ),
               ],
       ),
-      body: playlistSongs.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.music_note, size: 60, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Text(
-                    widget.isSystemPlaylist
-                        ? 'Play songs to add them to Favorites'
-                        : 'No songs in this playlist',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  if (!widget.isSystemPlaylist) ...[
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: _showAddSongsDialog,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add Songs'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.purple,
-                      ),
-                    ),
-                  ],
-                ],
+      body: Column(
+        children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Search in playlist...',
+                hintStyle: TextStyle(color: Colors.grey.shade500),
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.grey.shade900,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
-            )
-          : ListView.builder(
-              itemCount: playlistSongs.length,
-              itemBuilder: (context, index) {
-                final song = playlistSongs[index];
-                // Check if this song is currently playing in the global service
-                final songPath = song['path']!;
-                final globalIndex = _audioService.currentPlaylist.indexWhere(
-                  (s) => s['path'] == songPath,
-                );
-                final isCurrentSong =
-                    globalIndex != -1 &&
-                    _audioService.currentlyPlaying == globalIndex;
-                final isPlaying = isCurrentSong && _audioService.isPlaying;
-
-                return ListTile(
-                  leading: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      gradient: AppColors.bluePurpleGradient,
-                    ),
-                    child: Icon(
-                      isPlaying ? Icons.pause : Icons.music_note,
-                      color: Colors.white,
-                    ),
-                  ),
-                  title: Text(
-                    song['title']!,
-                    style: const TextStyle(color: Colors.white),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    song['artist']!,
-                    style: const TextStyle(color: Colors.grey),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: widget.isSystemPlaylist
-                      ? Text(
-                          '${widget.playCount[song['path']] ?? 0} plays',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+            ),
+          ),
+          Expanded(
+            child: playlistSongs.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _searchQuery.isEmpty
+                              ? Icons.music_note
+                              : Icons.search_off,
+                          size: 60,
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchQuery.isEmpty
+                              ? (widget.isSystemPlaylist
+                                    ? 'Play songs to add them to Favorites'
+                                    : 'No songs in this playlist')
+                              : 'No songs match your search',
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                        if (_searchQuery.isEmpty &&
+                            !widget.isSystemPlaylist) ...[
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _showAddSongsDialog,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Songs'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.purple,
+                            ),
                           ),
-                        )
-                      : PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert, color: Colors.grey),
-                          color: Colors.grey.shade900,
-                          onSelected: (value) {
-                            if (value == 'remove') {
-                              widget.onRemoveSong(song['path']!);
-                              setState(() {});
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Removed ${song['title']}'),
-                                  duration: const Duration(seconds: 1),
+                        ],
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: playlistSongs.length,
+                    itemBuilder: (context, index) {
+                      final song = playlistSongs[index];
+                      // Check if this song is currently playing in the global service
+                      final songPath = song['path']!;
+                      final globalIndex = _audioService.currentPlaylist
+                          .indexWhere((s) => s['path'] == songPath);
+                      final isCurrentSong =
+                          globalIndex != -1 &&
+                          _audioService.currentlyPlaying == globalIndex;
+                      final isPlaying =
+                          isCurrentSong && _audioService.isPlaying;
+
+                      return ListTile(
+                        leading: Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            gradient: AppColors.bluePurpleGradient,
+                          ),
+                          child: Icon(
+                            isPlaying ? Icons.pause : Icons.music_note,
+                            color: Colors.white,
+                          ),
+                        ),
+                        title: Text(
+                          song['title']!,
+                          style: const TextStyle(color: Colors.white),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          song['artist']!,
+                          style: const TextStyle(color: Colors.grey),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: widget.isSystemPlaylist
+                            ? Text(
+                                '${widget.playCount[song['path']] ?? 0} plays',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
                                 ),
-                              );
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'remove',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.remove_circle, color: Colors.red),
-                                  SizedBox(width: 12),
-                                  Text(
-                                    'Remove from Playlist',
-                                    style: TextStyle(color: Colors.red),
+                              )
+                            : PopupMenuButton<String>(
+                                icon: const Icon(
+                                  Icons.more_vert,
+                                  color: Colors.grey,
+                                ),
+                                color: Colors.grey.shade900,
+                                onSelected: (value) {
+                                  if (value == 'remove') {
+                                    widget.onRemoveSong(song['path']!);
+                                    setState(() {});
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Removed ${song['title']}',
+                                        ),
+                                        duration: const Duration(seconds: 1),
+                                      ),
+                                    );
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'remove',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.remove_circle,
+                                          color: Colors.red,
+                                        ),
+                                        SizedBox(width: 12),
+                                        Text(
+                                          'Remove from Playlist',
+                                          style: TextStyle(color: Colors.red),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
-                        ),
-                  onTap: () => _playSong(song['path']!, index),
-                );
-              },
-            ),
+                        onTap: () => _playSong(song['path']!, index),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3441,16 +3523,38 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
     try {
       final videoUrl = 'https://www.youtube.com/watch?v=${video.id.value}';
 
-      // Make request to your API with streaming
+      debugPrint('🌐 Attempting to download: ${video.title}');
+      debugPrint('🌐 Video URL: $videoUrl');
+      debugPrint('🌐 API URL: $apiUrl');
+
+      // Make request to your API with streaming and timeout
       final request = http.Request('POST', Uri.parse('$apiUrl/api/download'));
       request.headers['Content-Type'] = 'application/json';
+      request.headers['Accept'] = 'audio/mpeg';
       request.body = jsonEncode({'url': videoUrl});
 
-      final streamedResponse = await _downloadClient!.send(request);
+      debugPrint('🌐 Sending request to API...');
+
+      final streamedResponse = await _downloadClient!
+          .send(request)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw Exception(
+                'Connection timeout. Please check your internet connection.',
+              );
+            },
+          );
+
+      debugPrint('🌐 API Response Status: ${streamedResponse.statusCode}');
 
       if (streamedResponse.statusCode == 200) {
         // Get total size if available
         final contentLength = streamedResponse.contentLength ?? 0;
+
+        debugPrint(
+          '🌐 Content-Length: ${contentLength > 0 ? "$contentLength bytes" : "Unknown"}',
+        );
 
         // Collect bytes and track progress
         final List<int> bytes = [];
@@ -3460,6 +3564,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         await for (var chunk in streamedResponse.stream) {
           // Check if download was cancelled
           if (!_isDownloading) {
+            debugPrint('🌐 Download cancelled by user');
             throw Exception('Download cancelled');
           }
 
@@ -3483,8 +3588,6 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
                 _downloadProgress = _downloadedBytes / _totalBytes;
               }
             });
-
-            // Progress update happens in UI via setState
           }
         }
 
@@ -3495,14 +3598,36 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
           _downloadProgress = 1.0;
         });
 
-        // Save the MP3 file
-        final directory = Directory('/storage/emulated/0/Music');
+        debugPrint('🌐 Download complete: ${bytes.length} bytes');
+
+        // Validate that we actually got MP3 data
+        if (bytes.length < 1000) {
+          throw Exception(
+            'Downloaded file is too small (${bytes.length} bytes). The API may have returned an error.',
+          );
+        }
+
+        // Save the MP3 file — platform-specific directory
+        final String saveDirPath;
+        if (Platform.isMacOS) {
+          final home = Platform.environment['HOME'] ?? '';
+          saveDirPath = '$home/Music';
+        } else if (Platform.isAndroid) {
+          saveDirPath = '/storage/emulated/0/Music';
+        } else {
+          throw Exception('Unsupported platform');
+        }
+
+        final directory = Directory(saveDirPath);
         await directory.create(recursive: true);
 
         final fileName = _sanitizeFileName(video.title);
         final file = File('${directory.path}/$fileName.mp3');
 
+        debugPrint('🌐 Saving to: ${file.path}');
         await file.writeAsBytes(bytes);
+
+        debugPrint('✅ File saved successfully');
 
         // Show success message
         if (mounted) {
@@ -3517,22 +3642,66 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
 
         // Notify parent to refresh song list
         widget.onSongDownloaded();
+      } else if (streamedResponse.statusCode == 404) {
+        throw Exception(
+          'API endpoint not found. The download service may be unavailable.',
+        );
+      } else if (streamedResponse.statusCode == 429) {
+        throw Exception(
+          'Too many requests. Please wait a moment and try again.',
+        );
+      } else if (streamedResponse.statusCode >= 500) {
+        throw Exception(
+          'Server error (${streamedResponse.statusCode}). The download service may be down.',
+        );
       } else {
-        throw Exception('API Error: ${streamedResponse.statusCode}');
+        // Read error message from response if available
+        final errorBody = await streamedResponse.stream.bytesToString();
+        debugPrint('🌐 Error response body: $errorBody');
+        throw Exception(
+          'API Error ${streamedResponse.statusCode}: ${errorBody.isNotEmpty ? errorBody : "Unknown error"}',
+        );
+      }
+    } on TimeoutException catch (e) {
+      debugPrint('❌ Timeout error: $e');
+      if (mounted && _isDownloading) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Connection timeout. Please check your internet connection and try again.',
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } on SocketException catch (e) {
+      debugPrint('❌ Network error: $e');
+      if (mounted && _isDownloading) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No internet connection. Please check your network and try again.',
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
       }
     } catch (e) {
+      debugPrint('❌ Download error: $e');
       if (mounted && _isDownloading) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               e.toString().contains('cancelled')
                   ? 'Download cancelled'
-                  : 'Download failed: $e',
+                  : 'Download failed: ${e.toString().replaceAll("Exception: ", "")}',
             ),
             backgroundColor: e.toString().contains('cancelled')
                 ? Colors.orange
                 : Colors.red,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -3596,8 +3765,11 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
                 hintText: 'Search YouTube...',
                 hintStyle: TextStyle(color: Colors.grey.shade500),
                 prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_searchController.text.isNotEmpty)
+                      IconButton(
                         icon: const Icon(Icons.clear, color: Colors.grey),
                         onPressed: () {
                           setState(() {
@@ -3605,8 +3777,13 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
                             _searchResults = [];
                           });
                         },
-                      )
-                    : null,
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.search, color: AppColors.purple),
+                      onPressed: () => _searchYouTube(_searchController.text),
+                    ),
+                  ],
+                ),
                 filled: true,
                 fillColor: Colors.grey.shade900,
                 border: OutlineInputBorder(
