@@ -35,7 +35,7 @@ Instead of generic "Download failed", users now see:
 **Solution:**
 1. Check if the API is running: Open browser and go to:
    ```
-   https://youtube-mp3-api-production.up.railway.app
+   https://youtube-mp3-api-alpha.vercel.app/
    ```
 2. If it's down, you need to:
    - Deploy your own API server
@@ -132,7 +132,7 @@ When download works, you should see:
 ```
 🌐 Attempting to download: Song Title
 🌐 Video URL: https://www.youtube.com/watch?v=...
-🌐 API URL: https://youtube-mp3-api-production.up.railway.app
+🌐 API URL: https://youtube-mp3-api-alpha.vercel.app/
 🌐 Sending request to API...
 🌐 API Response Status: 200
 🌐 Content-Length: 3456789 bytes
@@ -152,7 +152,7 @@ When download fails, you'll see specific error:
 
 The app is configured to use:
 ```
-https://youtube-mp3-api-production.up.railway.app
+https://youtube-mp3-api-alpha.vercel.app/
 ```
 
 To check if it's working:

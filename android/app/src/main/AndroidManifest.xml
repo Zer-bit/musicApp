@@ -1,15 +1,26 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <!-- Storage: READ_EXTERNAL_STORAGE for Android <= 12 (API 32) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+    <!-- Storage: WRITE_EXTERNAL_STORAGE for Android <= 9 (API 29) for deleting files -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29"/>
+    <!-- Storage: READ_MEDIA_AUDIO for Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
-    <uses-permission android:name="android.permission.BLUETOOTH"/>
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <!-- Bluetooth: BLUETOOTH + BLUETOOTH_ADMIN for Android <= 11 (API 30) -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30"/>
+    <!-- Bluetooth: BLUETOOTH_SCAN + BLUETOOTH_CONNECT for Android 12+ (API 31+) -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- POST_NOTIFICATIONS: required for Android 13+ (API 33+) media notification -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="jezsic"

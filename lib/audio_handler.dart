@@ -60,7 +60,7 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler {
       updatePosition: _player.position,
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
-      queueIndex: 0,
+      queueIndex: importMain.GlobalAudioService().currentlyPlaying ?? 0,
     );
   }
 
@@ -78,12 +78,12 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    importMain.GlobalAudioService().playNext();
+    await importMain.GlobalAudioService().playNext();
   }
 
   @override
   Future<void> skipToPrevious() async {
-    importMain.GlobalAudioService().playPrevious();
+    await importMain.GlobalAudioService().playPrevious();
   }
 
   @override
@@ -93,7 +93,9 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   // Method to set the file path and metadata
   Future<void> setAudioSource(String path, MediaItem item) async {
-    updateMediaItem(item);
+    await updateMediaItem(item);
+    // Populate the queue so the notification shows prev/next controls correctly
+    queue.add([item]);
     try {
       await _player.setFilePath(path);
     } catch (e) {

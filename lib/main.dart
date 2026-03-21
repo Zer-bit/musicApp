@@ -7,6 +7,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:http/http.dart' as http;
 import 'package:audio_service/audio_service.dart';
+import 'package:path_provider/path_provider.dart';
 import 'audio_handler.dart';
 import 'dart:io';
 import 'dart:math' as math;
@@ -93,8 +94,11 @@ class GlobalAudioService {
 
     audioPlayer.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
+        // LoopMode.one is handled by just_audio itself (player loops).
+        // LoopMode.all / LoopMode.off: advance to next song via the handler
+        // so the media notification stays in sync.
         if (loopMode != LoopMode.one) {
-          playNext();
+          _audioHandler.then((h) => h.skipToNext());
         }
       }
     });
@@ -144,17 +148,29 @@ class GlobalAudioService {
     try {
       if (songIndexBeforeDisconnect == null) return;
 
-      final songPath = currentPlaylist[songIndexBeforeDisconnect!]['path']!;
+      final song = currentPlaylist[songIndexBeforeDisconnect!];
+      final songPath = song['path']!;
 
-      await audioPlayer.setFilePath(songPath);
+      final handler = await _audioHandler.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw Exception('Audio handler not ready'),
+      );
+
+      await handler.setAudioSource(
+        songPath,
+        MediaItem(
+          id: songPath,
+          title: song['title'] ?? 'Unknown',
+          artist: song['artist'] ?? 'Unknown Artist',
+          duration: null,
+        ),
+      );
 
       if (positionBeforeDisconnect != null) {
-        await audioPlayer.seek(positionBeforeDisconnect!);
+        await handler.seek(positionBeforeDisconnect!);
       }
 
-      await audioPlayer.setVolume(1.0);
-
-      await audioPlayer.play();
+      await handler.play();
 
       currentlyPlaying = songIndexBeforeDisconnect;
       isPlaying = true;
@@ -172,7 +188,14 @@ class GlobalAudioService {
 
   Future<void> playSong(String path, int index) async {
     try {
-      final handler = await _audioHandler;
+      // Use a timeout so a broken/uninitialized handler never hangs the UI
+      // (which causes an ANR in release mode).
+      final handler = await _audioHandler.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw Exception(
+          'Audio service not ready. Please restart the app.',
+        ),
+      );
 
       // Check if the requested song is already playing (by path)
       bool isSameSong = false;
@@ -217,7 +240,7 @@ class GlobalAudioService {
           id: path,
           title: title,
           artist: song['artist'] ?? 'Unknown Artist',
-          duration: Duration.zero,
+          duration: null,
         ),
       );
 
@@ -227,7 +250,7 @@ class GlobalAudioService {
     }
   }
 
-  void playNext() {
+  Future<void> playNext() async {
     if (currentPlaylist.isEmpty || currentlyPlaying == null) return;
 
     // With loopMode.off, stop only after the last song; otherwise advance
@@ -254,11 +277,11 @@ class GlobalAudioService {
     }
 
     if (nextIndex < currentPlaylist.length) {
-      playSong(currentPlaylist[nextIndex]['path']!, nextIndex);
+      await playSong(currentPlaylist[nextIndex]['path']!, nextIndex);
     }
   }
 
-  void playPrevious() {
+  Future<void> playPrevious() async {
     if (currentPlaylist.isEmpty || currentlyPlaying == null) return;
 
     if (currentPosition.inSeconds > 3) {
@@ -281,7 +304,7 @@ class GlobalAudioService {
     }
 
     if (prevIndex < currentPlaylist.length) {
-      playSong(currentPlaylist[prevIndex]['path']!, prevIndex);
+      await playSong(currentPlaylist[prevIndex]['path']!, prevIndex);
     }
   }
 
@@ -294,6 +317,7 @@ class GlobalAudioService {
     switch (loopMode) {
       case LoopMode.off:
         loopMode = LoopMode.all;
+        audioPlayer.setLoopMode(LoopMode.off); // all-songs loop is handled by playNext()
         break;
       case LoopMode.all:
         loopMode = LoopMode.one;
@@ -395,36 +419,49 @@ class AppColors {
 }
 
 Future<void> main() async {
-  try {
-    WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
 
-    // Start the app immediately to avoid launch freeze
-    runApp(const MyApp());
+  // runApp() MUST be called BEFORE AudioService.init().
+  // AudioService.init() binds to MediaBrowserServiceCompat which requires
+  // the Android Activity to be in the 'Started' state — only guaranteed
+  // after runApp() has been called. Calling it before runApp() in release
+  // mode (AOT) causes an immediate native crash ('jezsic has stopped').
+  //
+  // The LoadingScreen waits up to 10 seconds for the handler to be ready
+  // before allowing any user interaction.
+  runApp(const MyApp());
 
-    // Initialize audio services in the background
-    _initializeAudioServices();
-  } catch (_) {
-    // Silently handle startup errors
-  }
+  // Fire-and-forget: audio init runs after the Activity is fully started.
+  _initializeAudioServices();
 }
 
 Future<void> _initializeAudioServices() async {
-  try {
-    final audioHandler = await AudioService.init(
-      builder: () => MyAudioHandler(),
-      config: const AudioServiceConfig(
-        androidNotificationChannelId: 'com.jezsic.music.playback',
-        androidNotificationChannelName: 'Music Playback',
-        androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
-        androidNotificationIcon: 'drawable/ic_music_notification',
-        androidShowNotificationBadge: true,
-      ),
-    );
+  // Retry up to 3 times – transient failures on first launch are common
+  // especially on Android where the MediaBrowser service binding can be slow.
+  for (int attempt = 0; attempt < 3; attempt++) {
+    try {
+      final audioHandler = await AudioService.init(
+        builder: () => MyAudioHandler(),
+        config: const AudioServiceConfig(
+          androidNotificationChannelId: 'com.example.jezsic.channel.audio',
+          androidNotificationChannelName: 'Music Playback',
+          androidNotificationChannelDescription: 'Jezsic music player controls',
+          androidNotificationOngoing: true,
+          androidStopForegroundOnPause: true,
+          androidNotificationIcon: 'drawable/ic_music_notification',
+          androidShowNotificationBadge: true,
+        ),
+      );
 
-    await GlobalAudioService().initialize(audioHandler);
-  } catch (_) {
-    // Silently handle initialization errors
+      await GlobalAudioService().initialize(audioHandler);
+      return; // Success – exit retry loop
+    } catch (e) {
+      if (attempt < 2) {
+        // Brief back-off before retry
+        await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+      }
+      // On the last attempt, silently give up so the app still launches
+    }
   }
 }
 
@@ -547,9 +584,13 @@ class _LoadingScreenState extends State<LoadingScreen>
     await Future.delayed(const Duration(milliseconds: 1000));
     if (!mounted) return;
 
-    // WAIT for audio service to be ready before proceeding
+    // WAIT for audio service to be ready before proceeding.
+    // Use up to 10 seconds (50 × 200ms) so slow devices and first-launch
+    // MediaBrowserService binding have time to complete before the user
+    // can tap anything. In release mode this is critical because AOT startup
+    // is fast but AudioService.init() runs after the Activity is ready.
     int timeout = 0;
-    while (!GlobalAudioService().isReady && timeout < 5) {
+    while (!GlobalAudioService().isReady && timeout < 50) {
       await Future.delayed(const Duration(milliseconds: 200));
       timeout++;
     }
@@ -1147,28 +1188,51 @@ class _AllSongsScreenState extends State<AllSongsScreen>
       _isLoading = true;
     });
 
-    // Request notification permission for Android 13+ (for media controls)
     if (Platform.isAndroid) {
-      final notificationStatus = await Permission.notification.status;
-      if (!notificationStatus.isGranted) {
+      // ── Notification permission (Android 13+ / API 33+) ──────────────────
+      // Required for the media player notification to appear.
+      final notifStatus = await Permission.notification.status;
+      if (!notifStatus.isGranted) {
         await Permission.notification.request();
+      }
+
+      // ── Bluetooth permissions (Android 12+ / API 31+) ───────────────────
+      // BLUETOOTH_CONNECT and BLUETOOTH_SCAN are dangerous permissions on
+      // Android 12+ and must be requested at runtime. Without them, the
+      // Bluetooth auto-resume feature silently fails in release builds.
+      final btConnect = await Permission.bluetoothConnect.status;
+      if (!btConnect.isGranted) {
+        await Permission.bluetoothConnect.request();
+      }
+      final btScan = await Permission.bluetoothScan.status;
+      if (!btScan.isGranted) {
+        await Permission.bluetoothScan.request();
       }
     }
 
-    // Request storage permission
-    PermissionStatus status;
+    // ── Storage / Audio permissions ────────────────────────────────────────
+    // Android version breakdown:
+    //   <= 9  (API 29-): READ_EXTERNAL_STORAGE + WRITE_EXTERNAL_STORAGE
+    //   10-12 (API 29-32): READ_EXTERNAL_STORAGE
+    //   13+   (API 33+): READ_MEDIA_AUDIO (replaces READ_EXTERNAL_STORAGE for audio)
+    PermissionStatus status = PermissionStatus.denied;
 
-    if (await Permission.storage.isGranted) {
+    // Try READ_MEDIA_AUDIO first (Android 13+)
+    if (await Permission.audio.isGranted) {
       status = PermissionStatus.granted;
-    } else if (await Permission.audio.isGranted) {
+    }
+    // Try READ_EXTERNAL_STORAGE (Android <= 12)
+    else if (await Permission.storage.isGranted) {
       status = PermissionStatus.granted;
-    } else if (await Permission.manageExternalStorage.isGranted) {
+    }
+    // Try MANAGE_EXTERNAL_STORAGE (broad access fallback)
+    else if (await Permission.manageExternalStorage.isGranted) {
       status = PermissionStatus.granted;
     } else {
-      // Try requesting permissions
-      status = await Permission.storage.request();
+      // Request in order: audio (Android 13+) → storage (Android ≤12) → manage
+      status = await Permission.audio.request();
       if (!status.isGranted) {
-        status = await Permission.audio.request();
+        status = await Permission.storage.request();
       }
       if (!status.isGranted) {
         status = await Permission.manageExternalStorage.request();
@@ -1193,12 +1257,37 @@ class _AllSongsScreenState extends State<AllSongsScreen>
       List<Map<String, String>> foundSongs = [];
       Set<String> addedPaths = {}; // Track added files to avoid duplicates
 
-      // Common music directories on Android
+      // Build list of directories to scan.
+      // In release builds scoped storage is enforced, so we use both the
+      // hard-coded primary external storage paths AND the path_provider result
+      // to ensure we find the real external storage root on all devices.
       List<String> musicPaths = [
         '/storage/emulated/0/Music',
         '/storage/emulated/0/Download',
         '/storage/emulated/0/Downloads',
+        '/storage/emulated/0/DCIM',
       ];
+
+      // Add path_provider external storage path (works reliably in release)
+      try {
+        final extDir = await getExternalStorageDirectory();
+        if (extDir != null) {
+          // getExternalStorageDirectory() returns something like
+          // /storage/emulated/0/Android/data/<pkg>/files — go up 4 levels
+          // to reach /storage/emulated/0 itself.
+          Directory root = extDir;
+          for (int i = 0; i < 4; i++) {
+            root = root.parent;
+          }
+          final rootPath = root.path;
+          for (final sub in ['Music', 'Download', 'Downloads']) {
+            final candidate = '$rootPath/$sub';
+            if (!musicPaths.contains(candidate)) {
+              musicPaths.add(candidate);
+            }
+          }
+        }
+      } catch (_) {}
 
       for (String path in musicPaths) {
         Directory dir = Directory(path);
@@ -1206,8 +1295,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
           await _scanDirectory(dir, foundSongs, addedPaths);
         }
       }
-
-      widget.onUpdateSongs(foundSongs);
 
       // Sort songs by modification date (newest first)
       foundSongs.sort((a, b) {
@@ -1230,7 +1317,15 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         );
       }
     } catch (e) {
-      // Error scanning files
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Scan error: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -1257,20 +1352,10 @@ class _AllSongsScreenState extends State<AllSongsScreen>
               '',
             );
 
-            // Get file duration using a separate audio player
-            String duration = '0:00';
-            try {
-              final tempPlayer = AudioPlayer();
-              final audioDuration = await tempPlayer.setFilePath(entity.path);
-              if (audioDuration != null) {
-                final minutes = audioDuration.inMinutes;
-                final seconds = audioDuration.inSeconds % 60;
-                duration = '$minutes:${seconds.toString().padLeft(2, '0')}';
-              }
-              await tempPlayer.dispose();
-            } catch (e) {
-              // Error getting duration
-            }
+            // Duration is not probed during scan to avoid Android media player handle limits
+            // (~15 handles max → caused the 14-song scan limit).
+            // The real duration is read from the stream when the song is played.
+            const String duration = '0:00';
 
             // Get file modification date
             FileStat fileStat = await entity.stat();
@@ -3463,7 +3548,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
 
   // API URL - Railway Production
   static const String apiUrl =
-      'https://youtube-mp3-api-production.up.railway.app';
+      'https://youtube-mp3-api-alpha.vercel.app/';
 
   @override
   void dispose() {
