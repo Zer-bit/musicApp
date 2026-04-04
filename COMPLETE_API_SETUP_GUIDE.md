@@ -660,63 +660,38 @@ Once everything works locally, deploy your API to the cloud so it works anywhere
 
 ### Which Platform Should You Choose?
 
-| Feature | Railway | Heroku |
+| Feature | Vercel | Railway |
 |---------|---------|--------|
 | **Free Tier** | ✅ Yes | ✅ Yes (limited) |
-| **Timeout** | ⏱️ No limit | ⏱️ 30s |
-| **FFmpeg Support** | ✅ Easy | ✅ Easy |
-| **Long Processes** | ✅ Perfect | ✅ Good |
-| **Setup Difficulty** | 🟢 Easy |  Medium |
-| **Best For** | Video conversion | Full apps |
+| **Timeout** | ⏱️ 60s+ (Hobby) | ⏱️ No limit |
+| **FFmpeg Support** | ✅ via Serverless | ✅ Easy |
+| **Long Processes** | ⚠️ Limited | ✅ Perfect |
+| **Setup Difficulty** | 🟢 Easy | 🟢 Easy |
+| **Best For** | Web apps/APIs | Desktop/LTS |
 | **Recommendation** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
 
 **For this YouTube MP3 project:**
-- ✅ **Railway** - Best choice (easy setup, no timeout issues)
-- ✅ **Heroku** - Good alternative (requires buildpack setup)
+- ✅ **Vercel** - Best choice (easy setup, fast global edge)
+- ✅ **Railway** - Good alternative (longer timeouts)
 
-### Option 1: Railway (Recommended - Free Tier Available)
+### Option 1: Vercel (Current Deployment)
 
-**Step 1: Create Railway Account**
-1. Go to https://railway.app
+**Step 1: Create Vercel Account**
+1. Go to https://vercel.com
 2. Sign up with GitHub
-3. Verify your email
 
-**Step 2: Prepare Your Code**
-1. Create a `.gitignore` file in `youtube-mp3-api`:
-```
-node_modules/
-.env
-```
+**Step 2: Deploy to Vercel**
+1. Push your code to GitHub
+2. Connect your repo to Vercel
+3. Vercel will auto-deploy
 
-2. Initialize git:
-```cmd
-cd C:\Users\jezer\Documents\youtube-mp3-api
-git init
-git add .
-git commit -m "Initial commit"
-```
+**Step 3: Get Your API URL**
+1. In Vercel dashboard, copy your domain (e.g., `https://youtube-mp3-api-alpha.vercel.app`)
 
-**Step 3: Deploy to Railway**
-1. Go to https://railway.app/new
-2. Click "Deploy from GitHub repo"
-3. Connect your GitHub account
-4. Push your code to GitHub first:
-   - Create a new repository on GitHub
-   - Follow GitHub's instructions to push your code
-5. Select your repository in Railway
-6. Railway will auto-detect Node.js and deploy
-7. Wait 2-3 minutes for deployment
-
-**Step 4: Get Your API URL**
-1. In Railway dashboard, click your project
-2. Click "Settings"
-3. Click "Generate Domain"
-4. Copy your URL (e.g., `https://your-app.railway.app`)
-
-**Step 5: Update Flutter App**
+**Step 4: Update Flutter App**
 In your Flutter app, change:
 ```dart
-const apiUrl = 'https://your-app.railway.app';
+const apiUrl = 'https://youtube-mp3-api-alpha.vercel.app';
 ```
 
 ---
