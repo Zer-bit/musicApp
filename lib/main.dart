@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
@@ -3546,9 +3546,9 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
   // HTTP client for cancellable requests
   http.Client? _downloadClient;
 
-  // API URL - Railway Production
+  // API URL - Render Production
   static const String apiUrl =
-      'https://youtube-mp3-api-alpha.vercel.app/';
+      'https://youtube-mp3-api-fgve.onrender.com';
 
   @override
   void dispose() {
@@ -3615,136 +3615,114 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
       // Make request to your API with streaming and timeout
       final request = http.Request('POST', Uri.parse('$apiUrl/api/download'));
       request.headers['Content-Type'] = 'application/json';
-      request.headers['Accept'] = 'audio/mpeg';
+      request.headers['Accept'] = 'audio/mpeg, audio/mp4, audio/webm, audio/*';
       request.body = jsonEncode({'url': videoUrl});
 
-      debugPrint('🌐 Sending request to API...');
-
-      final streamedResponse = await _downloadClient!
+      // Step 1: Call API to get the direct audio URL (fast, within Vercel timeout)
+      final apiResponse = await _downloadClient!
           .send(request)
           .timeout(
-            const Duration(seconds: 30),
+            const Duration(seconds: 60),
             onTimeout: () {
-              throw Exception(
-                'Connection timeout. Please check your internet connection.',
-              );
+              throw Exception('Connection timeout. Please check your internet connection.');
             },
           );
 
-      debugPrint('🌐 API Response Status: ${streamedResponse.statusCode}');
+      final apiBody = await apiResponse.stream.bytesToString();
 
-      if (streamedResponse.statusCode == 200) {
-        // Get total size if available
-        final contentLength = streamedResponse.contentLength ?? 0;
+      if (apiResponse.statusCode == 429) {
+        throw Exception('Too many requests. Please wait a moment and try again.');
+      } else if (apiResponse.statusCode == 404) {
+        throw Exception('API endpoint not found. The download service may be unavailable.');
+      } else if (apiResponse.statusCode >= 500) {
+        throw Exception('Server error (${apiResponse.statusCode}). Details: $apiBody');
+      } else if (apiResponse.statusCode != 200) {
+        throw Exception('API Error ${apiResponse.statusCode}: $apiBody');
+      }
 
-        debugPrint(
-          '🌐 Content-Length: ${contentLength > 0 ? "$contentLength bytes" : "Unknown"}',
-        );
+      final apiJson = jsonDecode(apiBody) as Map<String, dynamic>;
+      if (apiJson['success'] != true || apiJson['directUrl'] == null) {
+        throw Exception('API did not return a valid download URL: $apiBody');
+      }
 
-        // Collect bytes and track progress
-        final List<int> bytes = [];
-        int lastUpdateBytes = 0;
-        int lastUpdateTime = DateTime.now().millisecondsSinceEpoch;
+      final directUrl = apiJson['directUrl'] as String;
+      final fileExt = (apiJson['ext'] as String?) ?? 'm4a';
+      final apiTitle = (apiJson['title'] as String?) ?? _sanitizeFileName(video.title);
 
-        await for (var chunk in streamedResponse.stream) {
-          // Check if download was cancelled
-          if (!_isDownloading) {
-            debugPrint('🌐 Download cancelled by user');
-            throw Exception('Download cancelled');
-          }
+      debugPrint('Got direct URL, downloading audio...');
 
-          bytes.addAll(chunk);
+      // Step 2: Download directly from YouTube CDN
+      _downloadClient = http.Client();
+      final directRequest = http.Request('GET', Uri.parse(directUrl));
+      directRequest.headers['User-Agent'] =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-          // Optimize: Update UI every 100KB OR every 200ms (whichever comes first)
-          final now = DateTime.now().millisecondsSinceEpoch;
-          final timeSinceUpdate = now - lastUpdateTime;
-          final bytesSinceUpdate = bytes.length - lastUpdateBytes;
-
-          if (bytesSinceUpdate > 102400 ||
-              timeSinceUpdate > 200 ||
-              contentLength == 0) {
-            lastUpdateBytes = bytes.length;
-            lastUpdateTime = now;
-
-            setState(() {
-              _downloadedBytes = bytes.length;
-              _totalBytes = contentLength > 0 ? contentLength : bytes.length;
-              if (_totalBytes > 0) {
-                _downloadProgress = _downloadedBytes / _totalBytes;
-              }
-            });
-          }
-        }
-
-        // Final update
-        setState(() {
-          _downloadedBytes = bytes.length;
-          _totalBytes = bytes.length;
-          _downloadProgress = 1.0;
-        });
-
-        debugPrint('🌐 Download complete: ${bytes.length} bytes');
-
-        // Validate that we actually got MP3 data
-        if (bytes.length < 1000) {
-          throw Exception(
-            'Downloaded file is too small (${bytes.length} bytes). The API may have returned an error.',
+      final directResponse = await _downloadClient!
+          .send(directRequest)
+          .timeout(
+            const Duration(minutes: 10),
+            onTimeout: () {
+              throw Exception('Download timed out.');
+            },
           );
+
+      if (directResponse.statusCode != 200 && directResponse.statusCode != 206) {
+        throw Exception('Failed to download audio: HTTP ${directResponse.statusCode}');
+      }
+
+      final contentLength = directResponse.contentLength ?? 0;
+      final List<int> bytes = [];
+      int lastUpdateTime = DateTime.now().millisecondsSinceEpoch;
+
+      await for (var chunk in directResponse.stream) {
+        if (!_isDownloading) throw Exception('Download cancelled');
+        bytes.addAll(chunk);
+
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (now - lastUpdateTime > 200) {
+          lastUpdateTime = now;
+          setState(() {
+            _downloadedBytes = bytes.length;
+            _totalBytes = contentLength > 0 ? contentLength : bytes.length;
+            _downloadProgress = _totalBytes > 0 ? _downloadedBytes / _totalBytes : 0;
+          });
         }
+      }
 
-        // Save the MP3 file — platform-specific directory
-        final String saveDirPath;
-        if (Platform.isMacOS) {
-          final home = Platform.environment['HOME'] ?? '';
-          saveDirPath = '$home/Music';
-        } else if (Platform.isAndroid) {
-          saveDirPath = '/storage/emulated/0/Music';
-        } else {
-          throw Exception('Unsupported platform');
-        }
+      setState(() {
+        _downloadedBytes = bytes.length;
+        _totalBytes = bytes.length;
+        _downloadProgress = 1.0;
+      });
 
-        final directory = Directory(saveDirPath);
-        await directory.create(recursive: true);
+      if (bytes.length < 1000) {
+        throw Exception('Downloaded file is too small. The URL may have expired.');
+      }
 
-        final fileName = _sanitizeFileName(video.title);
-        final file = File('${directory.path}/$fileName.mp3');
-
-        debugPrint('🌐 Saving to: ${file.path}');
-        await file.writeAsBytes(bytes);
-
-        debugPrint('✅ File saved successfully');
-
-        // Show success message
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✓ Downloaded: ${video.title}'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-
-        // Notify parent to refresh song list
-        widget.onSongDownloaded();
-      } else if (streamedResponse.statusCode == 404) {
-        throw Exception(
-          'API endpoint not found. The download service may be unavailable.',
-        );
-      } else if (streamedResponse.statusCode == 429) {
-        throw Exception(
-          'Too many requests. Please wait a moment and try again.',
-        );
-      } else if (streamedResponse.statusCode >= 500) {
-        throw Exception(
-          'Server error (${streamedResponse.statusCode}). The download service may be down.',
-        );
+      // Save file
+      final String saveDirPath;
+      if (Platform.isMacOS) {
+        final home = Platform.environment['HOME'] ?? '';
+        saveDirPath = '$home/Music';
+      } else if (Platform.isAndroid) {
+        saveDirPath = '/storage/emulated/0/Music';
       } else {
-        // Read error message from response if available
-        final errorBody = await streamedResponse.stream.bytesToString();
-        debugPrint('🌐 Error response body: $errorBody');
-        throw Exception(
-          'API Error ${streamedResponse.statusCode}: ${errorBody.isNotEmpty ? errorBody : "Unknown error"}',
+        throw Exception('Unsupported platform');
+      }
+
+      final directory = Directory(saveDirPath);
+      await directory.create(recursive: true);
+
+      final file = File('${directory.path}/$apiTitle.$fileExt');
+      await file.writeAsBytes(bytes);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Downloaded: ${video.title}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
         );
       }
     } on TimeoutException catch (e) {

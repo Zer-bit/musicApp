@@ -686,12 +686,12 @@ Once everything works locally, deploy your API to the cloud so it works anywhere
 3. Vercel will auto-deploy
 
 **Step 3: Get Your API URL**
-1. In Vercel dashboard, copy your domain (e.g., `https://youtube-mp3-api-alpha.vercel.app/`)
+1. In Vercel dashboard, copy your domain (e.g., `https://youtube-mp3-api-alpha.vercel.app`)
 
 **Step 4: Update Flutter App**
 In your Flutter app, change:
 ```dart
-const apiUrl = 'https://youtube-mp3-api-alpha.vercel.app/';
+const apiUrl = 'https://youtube-mp3-api-alpha.vercel.app';
 ```
 
 ---
