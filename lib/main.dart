@@ -3618,63 +3618,55 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
       request.headers['Accept'] = 'audio/mpeg, audio/mp4, audio/webm, audio/*';
       request.body = jsonEncode({'url': videoUrl});
 
-      // Step 1: Call API to get the direct audio URL (fast, within Vercel timeout)
+      // Step 1: Call API - server streams MP3 directly
       final apiResponse = await _downloadClient!
           .send(request)
           .timeout(
-            const Duration(seconds: 60),
+            const Duration(minutes: 5),
             onTimeout: () {
               throw Exception('Connection timeout. Please check your internet connection.');
             },
           );
 
-      final apiBody = await apiResponse.stream.bytesToString();
-
       if (apiResponse.statusCode == 429) {
+        final body = await apiResponse.stream.bytesToString();
         throw Exception('Too many requests. Please wait a moment and try again.');
       } else if (apiResponse.statusCode == 404) {
         throw Exception('API endpoint not found. The download service may be unavailable.');
       } else if (apiResponse.statusCode >= 500) {
-        throw Exception('Server error (${apiResponse.statusCode}). Details: $apiBody');
+        final body = await apiResponse.stream.bytesToString();
+        throw Exception('Server error (${apiResponse.statusCode}). Details: $body');
       } else if (apiResponse.statusCode != 200) {
-        throw Exception('API Error ${apiResponse.statusCode}: $apiBody');
+        final body = await apiResponse.stream.bytesToString();
+        throw Exception('API Error ${apiResponse.statusCode}: $body');
       }
 
-      final apiJson = jsonDecode(apiBody) as Map<String, dynamic>;
-      if (apiJson['success'] != true || apiJson['directUrl'] == null) {
-        throw Exception('API did not return a valid download URL: $apiBody');
+      // Check if response is JSON (error) or binary (mp3)
+      final contentType = apiResponse.headers['content-type'] ?? '';
+      if (contentType.contains('application/json')) {
+        final body = await apiResponse.stream.bytesToString();
+        final json = jsonDecode(body) as Map<String, dynamic>;
+        throw Exception(json['error'] ?? 'Unknown error');
       }
 
-      final directUrl = apiJson['directUrl'] as String;
-      final fileExt = (apiJson['ext'] as String?) ?? 'm4a';
-      final apiTitle = (apiJson['title'] as String?) ?? _sanitizeFileName(video.title);
-
-      debugPrint('Got direct URL, downloading audio...');
-
-      // Step 2: Download directly from YouTube CDN
-      _downloadClient = http.Client();
-      final directRequest = http.Request('GET', Uri.parse(directUrl));
-      directRequest.headers['User-Agent'] =
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-
-      final directResponse = await _downloadClient!
-          .send(directRequest)
-          .timeout(
-            const Duration(minutes: 10),
-            onTimeout: () {
-              throw Exception('Download timed out.');
-            },
-          );
-
-      if (directResponse.statusCode != 200 && directResponse.statusCode != 206) {
-        throw Exception('Failed to download audio: HTTP ${directResponse.statusCode}');
+      // Get filename from Content-Disposition header
+      final disposition = apiResponse.headers['content-disposition'] ?? '';
+      String apiTitle = _sanitizeFileName(video.title);
+      if (disposition.contains('filename=')) {
+        final match = RegExp(r'filename="?([^"]+)"?').firstMatch(disposition);
+        if (match != null) {
+          apiTitle = match.group(1)!.replaceAll('.mp3', '');
+        }
       }
+      const fileExt = 'mp3';
 
-      final contentLength = directResponse.contentLength ?? 0;
+      debugPrint('Receiving MP3 stream...');
+
+      final contentLength = apiResponse.contentLength ?? 0;
       final List<int> bytes = [];
       int lastUpdateTime = DateTime.now().millisecondsSinceEpoch;
 
-      await for (var chunk in directResponse.stream) {
+      await for (var chunk in apiResponse.stream) {
         if (!_isDownloading) throw Exception('Download cancelled');
         bytes.addAll(chunk);
 
