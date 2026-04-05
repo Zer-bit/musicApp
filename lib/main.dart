@@ -3664,7 +3664,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         throw Exception('API Error ${apiResponse.statusCode}: $body');
       }
 
-      // Check if response is JSON (error) or binary (mp3)
+      // Server streams m4a binary directly
       final contentType = apiResponse.headers['content-type'] ?? '';
       if (contentType.contains('application/json')) {
         final body = await apiResponse.stream.bytesToString();
@@ -3672,18 +3672,17 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         throw Exception(json['error'] ?? 'Unknown error');
       }
 
-      // Get filename from Content-Disposition header
       final disposition = apiResponse.headers['content-disposition'] ?? '';
       String apiTitle = _sanitizeFileName(video.title);
+      String fileExt = 'm4a';
       if (disposition.contains('filename=')) {
         final match = RegExp(r'filename="?([^"]+)"?').firstMatch(disposition);
         if (match != null) {
-          apiTitle = match.group(1)!.replaceAll('.mp3', '');
+          final fname = match.group(1)!;
+          apiTitle = fname.contains('.') ? fname.substring(0, fname.lastIndexOf('.')) : fname;
+          fileExt = fname.contains('.') ? fname.split('.').last : 'm4a';
         }
       }
-      const fileExt = 'mp3';
-
-      debugPrint('Receiving MP3 stream...');
 
       final contentLength = apiResponse.contentLength ?? 0;
       final List<int> bytes = [];
@@ -3769,16 +3768,35 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
     } catch (e) {
       debugPrint('❌ Download error: $e');
       if (mounted && _isDownloading) {
+        final msg = e.toString().replaceAll('Exception: ', '');
+        String userMessage;
+
+        if (msg.contains('cancelled')) {
+          userMessage = 'Download cancelled.';
+        } else if (msg.contains('429') || msg.contains('Too many requests')) {
+          userMessage = 'Too many requests. Please wait a moment and try again.';
+        } else if (msg.contains('unavailable') || msg.contains('Video unavailable')) {
+          userMessage = 'This video is unavailable or restricted in your region.';
+        } else if (msg.contains('timeout') || msg.contains('timed out')) {
+          userMessage = 'Download timed out. The server may be busy, please try again.';
+        } else if (msg.contains('500') || msg.contains('Server error')) {
+          userMessage = 'Server error. Please try again in a moment.';
+        } else if (msg.contains('404')) {
+          userMessage = 'Download service not found. Please check your connection.';
+        } else if (msg.contains('too small')) {
+          userMessage = 'Download failed - file was empty. Please try again.';
+        } else if (msg.contains('Sign in') || msg.contains('bot')) {
+          userMessage = 'YouTube is blocking the download. Please try again later.';
+        } else if (msg.contains('copyright') || msg.contains('blocked')) {
+          userMessage = 'This video cannot be downloaded due to copyright restrictions.';
+        } else {
+          userMessage = 'Download failed. Please try again.';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              e.toString().contains('cancelled')
-                  ? 'Download cancelled'
-                  : 'Download failed: ${e.toString().replaceAll("Exception: ", "")}',
-            ),
-            backgroundColor: e.toString().contains('cancelled')
-                ? Colors.orange
-                : Colors.red,
+            content: Text(userMessage),
+            backgroundColor: msg.contains('cancelled') ? Colors.orange : Colors.red,
             duration: const Duration(seconds: 4),
           ),
         );
