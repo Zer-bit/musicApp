@@ -875,8 +875,6 @@ class _HomeScreenState extends State<HomeScreen> {
       {}; // Store lyrics for each song (path -> lyrics)
   final List<Map<String, dynamic>> _playlists = [
     {'name': 'Favorites', 'songs': <String>[], 'isSystem': true},
-    {'name': 'Workout', 'songs': <String>[]},
-    {'name': 'Chill', 'songs': <String>[]},
   ];
 
   // Cache the screen widgets so they're not recreated on every build
@@ -915,12 +913,14 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _playlists.add({'name': name, 'songs': <String>[]});
     });
+    _savePlaylists();
   }
 
   void _removePlaylist(int index) {
     setState(() {
       _playlists.removeAt(index);
     });
+    _savePlaylists();
   }
 
   void _addSongToPlaylist(int playlistIndex, String songPath) {
@@ -930,6 +930,7 @@ class _HomeScreenState extends State<HomeScreen> {
         songs.add(songPath);
       }
     });
+    _savePlaylists();
   }
 
   void _removeSongFromPlaylist(int playlistIndex, String songPath) {
@@ -937,6 +938,43 @@ class _HomeScreenState extends State<HomeScreen> {
       final songs = _playlists[playlistIndex]['songs'] as List<String>;
       songs.remove(songPath);
     });
+    _savePlaylists();
+  }
+
+  Future<void> _savePlaylists() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Only save non-system playlists
+      final toSave = _playlists
+          .where((p) => p['isSystem'] != true)
+          .map((p) => {'name': p['name'], 'songs': p['songs']})
+          .toList();
+      await prefs.setString('cached_playlists', jsonEncode(toSave));
+    } catch (e) {
+      // Error saving playlists
+    }
+  }
+
+  Future<void> _loadPlaylistsFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString('cached_playlists');
+      if (json != null && json.isNotEmpty) {
+        final List<dynamic> decoded = jsonDecode(json);
+        setState(() {
+          // Keep system playlists, replace user playlists
+          _playlists.removeWhere((p) => p['isSystem'] != true);
+          for (final p in decoded) {
+            _playlists.add({
+              'name': p['name'],
+              'songs': List<String>.from(p['songs']),
+            });
+          }
+        });
+      }
+    } catch (e) {
+      // Error loading playlists
+    }
   }
 
   void _saveLyrics(String songPath, String lyrics) {
@@ -978,8 +1016,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadLyricsFromCache();
+    _loadPlaylistsFromCache();
 
-    // Create screens once and cache them
+    // Create screens once and cache them (PlaylistScreen is built dynamically in build())
     _screens = [
       AllSongsScreen(
         songs: _songs,
@@ -991,18 +1030,9 @@ class _HomeScreenState extends State<HomeScreen> {
         lyrics: _lyrics,
         onSaveLyrics: _saveLyrics,
       ),
-      PlaylistScreen(
-        playlists: _playlists,
-        allSongs: _songs,
-        onAddPlaylist: _addPlaylist,
-        onRemovePlaylist: _removePlaylist,
-        onAddSongToPlaylist: _addSongToPlaylist,
-        onRemoveSongFromPlaylist: _removeSongFromPlaylist,
-        playCount: _playCount,
-      ),
+      const SizedBox.shrink(), // placeholder, replaced in build()
       BrowseSongsScreen(
         onSongDownloaded: () {
-          // Refresh the song list when a new song is downloaded
           setState(() {});
         },
       ),
@@ -1013,11 +1043,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // PlaylistScreen is rebuilt every time so it always reflects latest playlists
+    final playlistScreen = PlaylistScreen(
+      playlists: _playlists,
+      allSongs: _songs,
+      onAddPlaylist: _addPlaylist,
+      onRemovePlaylist: _removePlaylist,
+      onAddSongToPlaylist: _addSongToPlaylist,
+      onRemoveSongFromPlaylist: _removeSongFromPlaylist,
+      playCount: _playCount,
+    );
+
     return Scaffold(
       body: Column(
         children: [
           Expanded(
-            child: IndexedStack(index: _selectedIndex, children: _screens),
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: [_screens[0], playlistScreen, _screens[2]],
+            ),
           ),
           // Global mini player - shows on all tabs
           const GlobalMiniPlayer(),
@@ -2970,7 +3014,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   }
 }
 
-class PlaylistScreen extends StatelessWidget {
+class PlaylistScreen extends StatefulWidget {
   final List<Map<String, dynamic>> playlists;
   final List<Map<String, String>> allSongs;
   final Function(String) onAddPlaylist;
@@ -2990,6 +3034,11 @@ class PlaylistScreen extends StatelessWidget {
     required this.playCount,
   });
 
+  @override
+  State<PlaylistScreen> createState() => _PlaylistScreenState();
+}
+
+class _PlaylistScreenState extends State<PlaylistScreen> {
   void _showAddPlaylistDialog(BuildContext context) {
     final TextEditingController controller = TextEditingController();
 
@@ -2997,41 +3046,29 @@ class PlaylistScreen extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey.shade900,
-        title: const Text(
-          'New Playlist',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('New Playlist', style: TextStyle(color: Colors.white)),
         content: TextField(
           controller: controller,
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
             hintText: 'Playlist name',
             hintStyle: TextStyle(color: Colors.grey),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: AppColors.purple),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: AppColors.purple),
-            ),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.purple)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.purple)),
           ),
           autofocus: true,
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
           TextButton(
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
-                onAddPlaylist(controller.text.trim());
+                widget.onAddPlaylist(controller.text.trim());
                 Navigator.pop(context);
+                setState(() {});
               }
             },
-            child: const Text(
-              'Create',
-              style: TextStyle(color: AppColors.purple),
-            ),
+            child: const Text('Create', style: TextStyle(color: AppColors.purple)),
           ),
         ],
       ),
@@ -3043,23 +3080,15 @@ class PlaylistScreen extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey.shade900,
-        title: const Text(
-          'Delete Playlist',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          'Are you sure you want to delete "${playlists[index]['name']}"?',
-          style: const TextStyle(color: Colors.grey),
-        ),
+        title: const Text('Delete Playlist', style: TextStyle(color: Colors.white)),
+        content: Text('Delete "${widget.playlists[index]['name']}"?', style: const TextStyle(color: Colors.grey)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
           TextButton(
             onPressed: () {
-              onRemovePlaylist(index);
+              widget.onRemovePlaylist(index);
               Navigator.pop(context);
+              setState(() {});
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
@@ -3082,33 +3111,28 @@ class PlaylistScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: playlists.isEmpty
+      body: widget.playlists.isEmpty
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(Icons.playlist_play, size: 60, color: Colors.grey),
                   const SizedBox(height: 16),
-                  const Text(
-                    'No playlists yet',
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                  const Text('No playlists yet', style: TextStyle(color: Colors.grey)),
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: () => _showAddPlaylistDialog(context),
                     icon: const Icon(Icons.add),
                     label: const Text('Create Playlist'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.purple,
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.purple),
                   ),
                 ],
               ),
             )
           : ListView.builder(
-              itemCount: playlists.length,
+              itemCount: widget.playlists.length,
               itemBuilder: (context, index) {
-                final playlist = playlists[index];
+                final playlist = widget.playlists[index];
                 final songCount = (playlist['songs'] as List).length;
                 final isSystemPlaylist = playlist['isSystem'] == true;
 
@@ -3118,19 +3142,11 @@ class PlaylistScreen extends StatelessWidget {
                     height: 50,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      gradient: isSystemPlaylist
-                          ? AppColors.accentGradient
-                          : AppColors.purpleBlueGradient,
+                      gradient: isSystemPlaylist ? AppColors.accentGradient : AppColors.purpleBlueGradient,
                     ),
-                    child: Icon(
-                      isSystemPlaylist ? Icons.favorite : Icons.playlist_play,
-                      color: Colors.white,
-                    ),
+                    child: Icon(isSystemPlaylist ? Icons.favorite : Icons.playlist_play, color: Colors.white),
                   ),
-                  title: Text(
-                    playlist['name'],
-                    style: const TextStyle(color: Colors.white),
-                  ),
+                  title: Text(playlist['name'], style: const TextStyle(color: Colors.white)),
                   subtitle: Text(
                     '$songCount ${songCount == 1 ? 'song' : 'songs'}${isSystemPlaylist ? ' • Auto-updated' : ''}',
                     style: const TextStyle(color: Colors.grey),
@@ -3141,23 +3157,16 @@ class PlaylistScreen extends StatelessWidget {
                           icon: const Icon(Icons.more_vert, color: Colors.grey),
                           color: Colors.grey.shade900,
                           onSelected: (value) {
-                            if (value == 'delete') {
-                              _showDeleteConfirmation(context, index);
-                            }
+                            if (value == 'delete') _showDeleteConfirmation(context, index);
                           },
                           itemBuilder: (context) => [
                             const PopupMenuItem(
                               value: 'delete',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.delete, color: Colors.red),
-                                  SizedBox(width: 12),
-                                  Text(
-                                    'Delete Playlist',
-                                    style: TextStyle(color: Colors.red),
-                                  ),
-                                ],
-                              ),
+                              child: Row(children: [
+                                Icon(Icons.delete, color: Colors.red),
+                                SizedBox(width: 12),
+                                Text('Delete Playlist', style: TextStyle(color: Colors.red)),
+                              ]),
                             ),
                           ],
                         ),
@@ -3169,16 +3178,21 @@ class PlaylistScreen extends StatelessWidget {
                           playlistName: playlist['name'],
                           playlistIndex: index,
                           songPaths: List<String>.from(playlist['songs']),
-                          allSongs: allSongs,
-                          onAddSong: (songPath) =>
-                              onAddSongToPlaylist(index, songPath),
-                          onRemoveSong: (songPath) =>
-                              onRemoveSongFromPlaylist(index, songPath),
+                          allSongs: widget.allSongs,
+                          onAddSong: (songPath) {
+                            widget.onAddSongToPlaylist(index, songPath);
+                            setState(() {});
+                          },
+                          onRemoveSong: (songPath) {
+                            widget.onRemoveSongFromPlaylist(index, songPath);
+                            setState(() {});
+                          },
                           isSystemPlaylist: isSystemPlaylist,
-                          playCount: playCount,
+                          playCount: widget.playCount,
+                          getLatestSongPaths: () => List<String>.from(widget.playlists[index]['songs']),
                         ),
                       ),
-                    );
+                    ).then((_) => setState(() {}));
                   },
                 );
               },
@@ -3196,6 +3210,7 @@ class PlaylistDetailScreen extends StatefulWidget {
   final Function(String) onRemoveSong;
   final bool isSystemPlaylist;
   final Map<String, int> playCount;
+  final List<String> Function() getLatestSongPaths;
 
   const PlaylistDetailScreen({
     super.key,
@@ -3207,6 +3222,7 @@ class PlaylistDetailScreen extends StatefulWidget {
     required this.onRemoveSong,
     this.isSystemPlaylist = false,
     required this.playCount,
+    required this.getLatestSongPaths,
   });
 
   @override
@@ -3242,13 +3258,18 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   }
 
   Future<void> _playSong(String path, int index) async {
-    // Update the global service's playlist to this playlist's songs
+    // Always get the latest song paths to avoid stale data
+    final latestPaths = widget.getLatestSongPaths();
     final playlistSongs = widget.allSongs
-        .where((song) => widget.songPaths.contains(song['path']))
+        .where((song) => latestPaths.contains(song['path']))
         .toList();
     _audioService.currentPlaylist = playlistSongs;
+    _audioService.onIncrementPlayCount = null;
 
-    await _audioService.playSong(path, index);
+    final playlistIndex = playlistSongs.indexWhere((s) => s['path'] == path);
+    if (playlistIndex == -1) return;
+
+    await _audioService.playSong(path, playlistIndex);
   }
 
   void _showAddSongsDialog() {
@@ -3272,7 +3293,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                   itemCount: widget.allSongs.length,
                   itemBuilder: (context, index) {
                     final song = widget.allSongs[index];
-                    final isAdded = widget.songPaths.contains(song['path']);
+                    final isAdded = widget.getLatestSongPaths().contains(song['path']);
 
                     return ListTile(
                       leading: Icon(
@@ -3323,10 +3344,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    super.build(context);
 
+    final latestPaths = widget.getLatestSongPaths();
     final playlistSongs = widget.allSongs
-        .where((song) => widget.songPaths.contains(song['path']))
+        .where((song) => latestPaths.contains(song['path']))
         .toList();
 
     return Scaffold(
@@ -3411,13 +3433,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           const SizedBox(height: 16),
                           ElevatedButton.icon(
                             onPressed: _showAddSongsDialog,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add Songs'),
+                            icon: const Icon(Icons.add, color: Colors.white),
+                            label: const Text('Add Songs', style: TextStyle(color: Colors.white)),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.purple,
+                              foregroundColor: Colors.white,
                             ),
-                          ),
-                        ],
+                          ),                        ],
                       ],
                     ),
                   )
@@ -3512,6 +3534,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                     },
                   ),
           ),
+          const GlobalMiniPlayer(),
         ],
       ),
     );
@@ -3629,7 +3652,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
           );
 
       if (apiResponse.statusCode == 429) {
-        final body = await apiResponse.stream.bytesToString();
+        await apiResponse.stream.bytesToString();
         throw Exception('Too many requests. Please wait a moment and try again.');
       } else if (apiResponse.statusCode == 404) {
         throw Exception('API endpoint not found. The download service may be unavailable.');
