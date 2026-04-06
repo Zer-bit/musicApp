@@ -231,6 +231,7 @@ class GlobalAudioService {
       currentPosition = Duration.zero;
       notifyListeners();
 
+      if (index < 0 || index >= currentPlaylist.length) return;
       final song = currentPlaylist[index];
       final title = song['title'] ?? 'Unknown';
 
@@ -253,7 +254,6 @@ class GlobalAudioService {
   Future<void> playNext() async {
     if (currentPlaylist.isEmpty || currentlyPlaying == null) return;
 
-    // With loopMode.off, stop only after the last song; otherwise advance
     if (loopMode == LoopMode.off &&
         currentlyPlaying == currentPlaylist.length - 1 &&
         !isShuffleOn) {
@@ -267,17 +267,17 @@ class GlobalAudioService {
     int nextIndex;
     if (isShuffleOn) {
       do {
-        nextIndex =
-            (DateTime.now().millisecondsSinceEpoch +
-                DateTime.now().microsecond) %
-            currentPlaylist.length;
+        nextIndex = (DateTime.now().millisecondsSinceEpoch + DateTime.now().microsecond) % currentPlaylist.length;
       } while (nextIndex == currentlyPlaying && currentPlaylist.length > 1);
     } else {
       nextIndex = (currentlyPlaying! + 1) % currentPlaylist.length;
     }
 
-    if (nextIndex < currentPlaylist.length) {
-      await playSong(currentPlaylist[nextIndex]['path']!, nextIndex);
+    if (nextIndex >= 0 && nextIndex < currentPlaylist.length) {
+      final path = currentPlaylist[nextIndex]['path'];
+      if (path != null && path.isNotEmpty) {
+        await playSong(path, nextIndex);
+      }
     }
   }
 
@@ -292,19 +292,17 @@ class GlobalAudioService {
     int prevIndex;
     if (isShuffleOn) {
       do {
-        prevIndex =
-            (DateTime.now().millisecondsSinceEpoch +
-                DateTime.now().microsecond) %
-            currentPlaylist.length;
+        prevIndex = (DateTime.now().millisecondsSinceEpoch + DateTime.now().microsecond) % currentPlaylist.length;
       } while (prevIndex == currentlyPlaying && currentPlaylist.length > 1);
     } else {
-      prevIndex =
-          (currentlyPlaying! - 1 + currentPlaylist.length) %
-          currentPlaylist.length;
+      prevIndex = (currentlyPlaying! - 1 + currentPlaylist.length) % currentPlaylist.length;
     }
 
-    if (prevIndex < currentPlaylist.length) {
-      await playSong(currentPlaylist[prevIndex]['path']!, prevIndex);
+    if (prevIndex >= 0 && prevIndex < currentPlaylist.length) {
+      final path = currentPlaylist[prevIndex]['path'];
+      if (path != null && path.isNotEmpty) {
+        await playSong(path, prevIndex);
+      }
     }
   }
 

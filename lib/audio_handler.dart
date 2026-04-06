@@ -94,10 +94,25 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler {
   // Method to set the file path and metadata
   Future<void> setAudioSource(String path, MediaItem item) async {
     await updateMediaItem(item);
-    // Populate the queue so the notification shows prev/next controls correctly
     queue.add([item]);
     try {
       await _player.setFilePath(path);
+      // Update MediaItem with actual duration once loaded to prevent notification crash
+      final duration = _player.duration;
+      if (duration != null) {
+        final updatedItem = item.copyWith(duration: duration);
+        await updateMediaItem(updatedItem);
+        queue.add([updatedItem]);
+      } else {
+        // Listen for duration and update when available
+        _player.durationStream.firstWhere((d) => d != null).then((d) {
+          if (d != null) {
+            final updatedItem = item.copyWith(duration: d);
+            updateMediaItem(updatedItem);
+            queue.add([updatedItem]);
+          }
+        }).catchError((_) {});
+      }
     } catch (e) {
       rethrow;
     }
