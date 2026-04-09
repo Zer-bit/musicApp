@@ -121,6 +121,7 @@ class GlobalAudioService {
 
   void _initBluetoothMonitoring() {
     try {
+      // Watch adapter-level on/off (e.g. BT toggled off entirely)
       bluetoothSubscription = FlutterBluePlus.adapterState.listen((state) {
         if (state == BluetoothAdapterState.off ||
             state == BluetoothAdapterState.unavailable) {
@@ -130,6 +131,27 @@ class GlobalAudioService {
             positionBeforeDisconnect = currentPosition;
           }
         } else if (state == BluetoothAdapterState.on) {
+          if (wasPlayingBeforeDisconnect &&
+              songIndexBeforeDisconnect != null &&
+              songIndexBeforeDisconnect! < currentPlaylist.length) {
+            Future.delayed(const Duration(milliseconds: 1500), () {
+              _resumeAfterBluetoothReconnect();
+            });
+          }
+        }
+      });
+
+      // Watch individual device connect/disconnect (earphone plug in/out)
+      FlutterBluePlus.events.onConnectionStateChanged.listen((event) {
+        if (event.connectionState == BluetoothConnectionState.disconnected) {
+          // Earphone disconnected — save state so we can resume on reconnect
+          if (isPlaying) {
+            wasPlayingBeforeDisconnect = true;
+            songIndexBeforeDisconnect = currentlyPlaying;
+            positionBeforeDisconnect = currentPosition;
+          }
+        } else if (event.connectionState == BluetoothConnectionState.connected) {
+          // Earphone reconnected — resume if we were playing before
           if (wasPlayingBeforeDisconnect &&
               songIndexBeforeDisconnect != null &&
               songIndexBeforeDisconnect! < currentPlaylist.length) {
@@ -1669,6 +1691,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
+              final messenger = ScaffoldMessenger.of(context);
               try {
                 final file = File(songPath);
                 if (await file.exists()) {
@@ -1693,7 +1716,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                   await _saveSongsToCache(widget.songs);
 
                   if (mounted) {
-                    final messenger = ScaffoldMessenger.of(context);
                     messenger.showSnackBar(
                       SnackBar(
                         content: Text('Deleted $songTitle'),
@@ -1703,7 +1725,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                   }
                 } else {
                   if (mounted) {
-                    final messenger = ScaffoldMessenger.of(context);
                     messenger.showSnackBar(
                       const SnackBar(
                         content: Text('File not found'),
@@ -1714,7 +1735,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                 }
               } catch (e) {
                 if (mounted) {
-                  final messenger = ScaffoldMessenger.of(context);
                   messenger.showSnackBar(
                     SnackBar(
                       content: Text('Error deleting file: $e'),
@@ -2807,7 +2827,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     if (isPlaying)
                       AnimatedBuilder(
                         animation: _waveController,
-                        builder: (_, __) => Row(
+                        builder: (_, w) => Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: List.generate(5, (i) {
