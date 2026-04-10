@@ -8,6 +8,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:http/http.dart' as http;
 import 'package:audio_service/audio_service.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'audio_handler.dart';
 import 'dart:io';
 import 'dart:math' as math;
@@ -17,6 +18,66 @@ import 'dart:convert';
 // ─────────────────────────────────────────────
 //  GLOBAL AUDIO SERVICE (Shared across all screens)
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+//  DOWNLOAD NOTIFICATION SERVICE
+// ─────────────────────────────────────────────
+class DownloadNotificationService {
+  static final _plugin = FlutterLocalNotificationsPlugin();
+  static const _channelId = 'download_channel';
+  static const _notifId = 99;
+  static bool _initialized = false;
+
+  static Future<void> init() async {
+    if (_initialized) return;
+    try {
+      const android = AndroidInitializationSettings('@mipmap/jezsic');
+      await _plugin.initialize(const InitializationSettings(android: android));
+      const channel = AndroidNotificationChannel(
+        _channelId, 'Downloads',
+        description: 'Song download progress',
+        importance: Importance.low,
+        playSound: false,
+        enableVibration: false,
+      );
+      await _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(channel);
+      _initialized = true;
+    } catch (_) {}
+  }
+
+  static Future<void> show(String title, {String body = 'Downloading...'}) async {
+    try {
+      await init();
+      await _plugin.show(
+        _notifId,
+        title,
+        body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channelId, 'Downloads',
+            channelDescription: 'Song download progress',
+            importance: Importance.low,
+            priority: Priority.low,
+            ongoing: true,
+            playSound: false,
+            enableVibration: false,
+            showProgress: true,
+            indeterminate: true,
+            onlyAlertOnce: true,
+            icon: 'ic_music_notification',
+          ),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  static Future<void> dismiss() async {
+    try {
+      await _plugin.cancel(_notifId);
+    } catch (_) {}
+  }
+}
+
 class GlobalAudioService {
   static final GlobalAudioService _instance = GlobalAudioService._internal();
   factory GlobalAudioService() => _instance;
@@ -914,6 +975,36 @@ class _HomeScreenState extends State<HomeScreen> {
       _playCount[songPath] = (_playCount[songPath] ?? 0) + 1;
       _updateFavorites();
     });
+    _savePlayCount();
+  }
+
+  Future<void> _savePlayCount() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = _playCount.map((k, v) => MapEntry(k, v.toString()));
+      await prefs.setString('cached_play_count', jsonEncode(encoded));
+    } catch (e) {
+      // Error saving play count
+    }
+  }
+
+  Future<void> _loadPlayCountFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString('cached_play_count');
+      if (json != null && json.isNotEmpty) {
+        final Map<String, dynamic> decoded = jsonDecode(json);
+        setState(() {
+          _playCount.clear();
+          decoded.forEach((key, value) {
+            _playCount[key] = int.tryParse(value.toString()) ?? 0;
+          });
+        });
+        _updateFavorites();
+      }
+    } catch (e) {
+      // Error loading play count
+    }
   }
 
   void _updateFavorites() {
@@ -1037,6 +1128,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadLyricsFromCache();
     _loadPlaylistsFromCache();
+    _loadPlayCountFromCache();
 
     // Create screens once and cache them (PlaylistScreen is built dynamically in build())
     _screens = [
@@ -1669,6 +1761,122 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     );
   }
 
+  void _showRenameSongDialog(String songPath, String currentTitle, int index) {
+    final controller = TextEditingController(text: currentTitle);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey.shade900,
+        title: const Text('Rename Song', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'Song name',
+            hintStyle: TextStyle(color: Colors.grey.shade500),
+            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.purple)),
+            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.purple)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          TextButton(
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isEmpty || newName == currentTitle) {
+                Navigator.pop(context);
+                return;
+              }
+              Navigator.pop(context);
+              try {
+                // Request manage external storage permission for Android 11+
+                if (Platform.isAndroid) {
+                  final status = await Permission.manageExternalStorage.request();
+                  if (!status.isGranted) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Storage permission required to rename files'), backgroundColor: Colors.red),
+                      );
+                    }
+                    return;
+                  }
+                }
+
+                // Try the stored path first, then try alternate extensions
+                File? sourceFile;
+                String actualPath = songPath;
+                if (await File(songPath).exists()) {
+                  sourceFile = File(songPath);
+                } else {
+                  // Try swapping extension (mp3 <-> m4a)
+                  final altPath = songPath.endsWith('.mp3')
+                      ? songPath.replaceAll('.mp3', '.m4a')
+                      : songPath.replaceAll('.m4a', '.mp3');
+                  if (await File(altPath).exists()) {
+                    sourceFile = File(altPath);
+                    actualPath = altPath;
+                  }
+                }
+
+                if (sourceFile == null) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Song file not found on device'), backgroundColor: Colors.red),
+                    );
+                  }
+                  return;
+                }
+
+                final dir = sourceFile.parent.path;
+                final ext = actualPath.contains('.')
+                    ? actualPath.substring(actualPath.lastIndexOf('.'))
+                    : '.m4a';
+                final safeName = newName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '').trim();
+                if (safeName.isEmpty) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Invalid name'), backgroundColor: Colors.red),
+                    );
+                  }
+                  return;
+                }
+                final newPath = '$dir/$safeName$ext';
+                await sourceFile.copy(newPath);
+                try { await sourceFile.delete(); } catch (_) {}
+
+                setState(() {
+                  widget.songs[index]['title'] = safeName;
+                  widget.songs[index]['path'] = newPath;
+                  if (_audioService.currentlyPlaying == index) {
+                    _audioService.currentPlaylist[index]['title'] = safeName;
+                    _audioService.currentPlaylist[index]['path'] = newPath;
+                  }
+                });
+
+                await _saveSongsToCache(widget.songs);
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Renamed to "$safeName"'), backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                print('❌ Rename error: $e');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to rename: ${e.toString().replaceAll("FileSystemException: ", "")}'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            child: const Text('Rename', style: TextStyle(color: AppColors.purple)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showDeleteSongConfirmation(
     String songPath,
     String songTitle,
@@ -2248,6 +2456,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                                 song['path']!,
                                 song['title']!,
                               );
+                            } else if (value == 'rename') {
+                              _showRenameSongDialog(song['path']!, song['title']!, originalIndex);
                             } else if (value == 'lyrics') {
                               _showLyricsDialog(song['path']!, song['title']!);
                             } else if (value == 'delete') {
@@ -2265,10 +2475,17 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                                 children: [
                                   Icon(Icons.playlist_add, color: Colors.white),
                                   SizedBox(width: 12),
-                                  Text(
-                                    'Add to Playlist',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
+                                  Text('Add to Playlist', style: TextStyle(color: Colors.white)),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'rename',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.drive_file_rename_outline, color: Colors.white),
+                                  SizedBox(width: 12),
+                                  Text('Rename Song', style: TextStyle(color: Colors.white)),
                                 ],
                               ),
                             ),
@@ -3571,7 +3788,8 @@ class BrowseSongsScreen extends StatefulWidget {
   State<BrowseSongsScreen> createState() => _BrowseSongsScreenState();
 }
 
-class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
+class _BrowseSongsScreenState extends State<BrowseSongsScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   final YoutubeExplode _yt = YoutubeExplode();
 
@@ -3592,11 +3810,36 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
       'https://youtube-mp3-api-fgve.onrender.com';
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Keep download alive when app goes to background
+    // The HTTP client continues running as long as we don't cancel it
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     _yt.close();
-    _downloadClient?.close();
+    // Only close client if not actively downloading
+    if (!_isDownloading) {
+      _downloadClient?.close();
+    }
     super.dispose();
+  }
+
+  bool _isYouTubeUrl(String input) {
+    try {
+      final uri = Uri.parse(input);
+      return uri.host.contains('youtube.com') || uri.host.contains('youtu.be');
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _searchYouTube(String query) async {
@@ -3608,6 +3851,16 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
     });
 
     try {
+      // If it's a URL, fetch that specific video instead of searching
+      if (_isYouTubeUrl(query.trim())) {
+        final video = await _yt.videos.get(query.trim());
+        setState(() {
+          _searchResults = [video];
+          _isSearching = false;
+        });
+        return;
+      }
+
       final searchResults = await _yt.search.search(query);
       final videos = searchResults.take(20).toList();
 
@@ -3616,15 +3869,13 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         _isSearching = false;
       });
     } catch (e) {
-      // Search failed
       setState(() {
         _isSearching = false;
       });
-
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Search failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Search failed: $e')),
+        );
       }
     }
   }
@@ -3643,6 +3894,19 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
       _totalBytes = 0;
     });
 
+    // Show foreground notification to keep download alive in background
+    DownloadNotificationService.show(video.title, body: 'Downloading... Please wait');
+
+    // Request battery optimization exemption to keep network alive
+    if (Platform.isAndroid) {
+      try {
+        final status = await Permission.ignoreBatteryOptimizations.status;
+        if (!status.isGranted) {
+          await Permission.ignoreBatteryOptimizations.request();
+        }
+      } catch (_) {}
+    }
+
     // Create a new HTTP client for this download
     _downloadClient = http.Client();
 
@@ -3659,15 +3923,32 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
       request.headers['Accept'] = 'audio/mpeg, audio/mp4, audio/webm, audio/*';
       request.body = jsonEncode({'url': videoUrl});
 
-      // Step 1: Call API - server streams MP3 directly
-      final apiResponse = await _downloadClient!
-          .send(request)
-          .timeout(
+      // Step 1: Call API - server streams MP3 directly with retry
+      http.StreamedResponse? apiResponse;
+      int retries = 0;
+      while (retries < 3) {
+        try {
+          _downloadClient = http.Client();
+          final req = http.Request('POST', Uri.parse('$apiUrl/api/download'));
+          req.headers['Content-Type'] = 'application/json';
+          req.headers['Accept'] = 'audio/mpeg, audio/mp4, audio/webm, audio/*';
+          req.headers['Connection'] = 'keep-alive';
+          req.body = jsonEncode({'url': videoUrl});
+          apiResponse = await _downloadClient!.send(req).timeout(
             const Duration(minutes: 5),
-            onTimeout: () {
-              throw Exception('Connection timeout. Please check your internet connection.');
-            },
+            onTimeout: () => throw Exception('Connection timeout.'),
           );
+          break; // success
+        } catch (e) {
+          retries++;
+          if (retries >= 3) rethrow;
+          debugPrint('Retry $retries after error: $e');
+          await Future.delayed(Duration(seconds: retries * 2));
+          _downloadClient?.close();
+        }
+      }
+
+      if (apiResponse == null) throw Exception('Failed to connect to download service.');
 
       if (apiResponse.statusCode == 429) {
         await apiResponse.stream.bytesToString();
@@ -3776,9 +4057,9 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'No internet connection. Please check your network and try again.',
+              'Connection lost. The download was interrupted. Please try again.',
             ),
-            backgroundColor: Colors.red,
+            backgroundColor: Colors.orange,
             duration: Duration(seconds: 4),
           ),
         );
@@ -3821,6 +4102,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
       }
     } finally {
       // Always reset state, even if there's an error
+      DownloadNotificationService.dismiss();
       _downloadClient?.close();
       _downloadClient = null;
 
@@ -4082,6 +4364,14 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen> {
                               style: const TextStyle(
                                 color: Colors.grey,
                                 fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'This may take 1-2 minutes, please wait...',
+                              style: TextStyle(
+                                color: AppColors.purpleLight,
+                                fontSize: 11,
                               ),
                             ),
                           ],
