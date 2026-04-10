@@ -1852,6 +1852,15 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                     _audioService.currentPlaylist[index]['title'] = safeName;
                     _audioService.currentPlaylist[index]['path'] = newPath;
                   }
+                  // Update path in all playlists that contain the old path
+                  for (final playlist in widget.playlists) {
+                    final songs = playlist['songs'] as List<String>;
+                    final idx = songs.indexOf(actualPath);
+                    if (idx != -1) songs[idx] = newPath;
+                    // Also check original songPath
+                    final idx2 = songs.indexOf(songPath);
+                    if (idx2 != -1) songs[idx2] = newPath;
+                  }
                 });
 
                 await _saveSongsToCache(widget.songs);
