@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
@@ -10,6 +10,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'audio_handler.dart';
+import 'user_tutorial.dart';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:async';
@@ -684,9 +685,9 @@ class _LoadingScreenState extends State<LoadingScreen>
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, _, _) => const HomeScreen(),
+        pageBuilder: (context, anim1, anim2) => const HomeScreen(),
         transitionDuration: const Duration(milliseconds: 400),
-        transitionsBuilder: (_, anim, _, child) =>
+        transitionsBuilder: (context, anim, anim2, child) =>
             FadeTransition(opacity: anim, child: child),
       ),
     );
@@ -780,9 +781,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.deepPurple.shade400.withValues(
-                              alpha: 0.8,
-                            ),
+                            color: Colors.deepPurple.shade400.withOpacity(0.8),
                             blurRadius: 24,
                             spreadRadius: 4,
                           ),
@@ -919,7 +918,7 @@ class _VinylPainter extends CustomPainter {
       ..shader = RadialGradient(
         colors: [
           Colors.transparent,
-          AppColors.purple.withValues(alpha: 0.18),
+          AppColors.purple.withOpacity(0.18),
           Colors.transparent,
         ],
         stops: const [0.35, 0.65, 1.0],
@@ -1150,8 +1149,26 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ];
 
-    // Create screens once and cache them
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkFirstOpen();
+    });
   }
+
+  Future<void> _checkFirstOpen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isFirstOpen = prefs.getBool('is_first_open') ?? true;
+      if (isFirstOpen) {
+        if (mounted) {
+          UserTutorialDialog.show(context);
+          await prefs.setBool('is_first_open', false);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error checking first open: $e');
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -1997,7 +2014,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.purple.withValues(alpha: 0.3),
+                  color: AppColors.purple.withOpacity(0.3),
                   blurRadius: 20,
                   spreadRadius: 5,
                 ),
@@ -2063,10 +2080,10 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                     margin: EdgeInsets.all(isSmallScreen ? 12 : 16),
                     padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
+                      color: Colors.black.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.1),
+                        color: Colors.white.withOpacity(0.1),
                         width: 1,
                       ),
                     ),
@@ -2087,7 +2104,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                             'Chorus:\n'
                             'Your lyrics...',
                         hintStyle: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.3),
+                          color: Colors.white.withOpacity(0.3),
                           fontSize: isSmallScreen ? 12 : 14,
                         ),
                         border: InputBorder.none,
@@ -2274,6 +2291,11 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => UserTutorialDialog.show(context),
+            tooltip: 'User Guide',
+          ),
           IconButton(
             icon: Icon(
               Icons.timer,
@@ -2636,7 +2658,7 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
           color: Colors.grey.shade900,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
+              color: Colors.black.withOpacity(0.3),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -2993,8 +3015,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.purple.withValues(
-                                  alpha: isPlaying ? 0.6 : 0.2,
+                                color: AppColors.purple.withOpacity(
+                                  isPlaying ? 0.6 : 0.2,
                                 ),
                                 blurRadius: isPlaying ? 40 : 20,
                                 spreadRadius: isPlaying ? 8 : 2,
@@ -3013,9 +3035,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.05,
-                                      ),
+                                      color: Colors.white.withOpacity(0.05),
                                       width: 1,
                                     ),
                                   ),
@@ -3122,7 +3142,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         activeTrackColor: AppColors.blue,
                         inactiveTrackColor: Colors.grey.shade800,
                         thumbColor: Colors.white,
-                        overlayColor: AppColors.blue.withValues(alpha: 0.2),
+                        overlayColor: AppColors.blue.withOpacity(0.2),
                       ),
                       child: Slider(
                         value: position.inSeconds.toDouble().clamp(0.0, maxSec),
@@ -3199,7 +3219,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         gradient: AppColors.purpleBlueGradient,
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.purple.withValues(alpha: 0.5),
+                            color: AppColors.purple.withOpacity(0.5),
                             blurRadius: 20,
                             spreadRadius: 2,
                           ),
@@ -3349,6 +3369,11 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => UserTutorialDialog.show(context),
+            tooltip: 'User Guide',
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: () => _showAddPlaylistDialog(context),
@@ -4157,6 +4182,13 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
         title: const Text('Browse Songs'),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => UserTutorialDialog.show(context),
+            tooltip: 'User Guide',
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -4333,7 +4365,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
                 color: Colors.grey.shade900,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
+                    color: Colors.black.withOpacity(0.3),
                     blurRadius: 10,
                     offset: const Offset(0, -2),
                   ),
