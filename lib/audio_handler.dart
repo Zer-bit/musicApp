@@ -1,6 +1,6 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
-import 'main.dart' as importMain;
+import 'main.dart' as import_main;
 
 class MyAudioHandler extends BaseAudioHandler with SeekHandler {
   final _player = AudioPlayer();
@@ -53,6 +53,9 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler {
         MediaAction.seek,
         MediaAction.seekForward,
         MediaAction.seekBackward,
+        MediaAction.skipToNext,
+        MediaAction.skipToPrevious,
+        MediaAction.playPause,
       },
       androidCompactActionIndices: const [0, 1, 3],
       processingState: audioProcessingState,
@@ -60,7 +63,7 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler {
       updatePosition: _player.position,
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
-      queueIndex: importMain.GlobalAudioService().currentlyPlaying ?? 0,
+      queueIndex: import_main.GlobalAudioService().currentlyPlaying ?? 0,
     );
   }
 
@@ -78,27 +81,39 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    await importMain.GlobalAudioService().playNext();
+    await import_main.GlobalAudioService().playNext();
   }
 
   @override
   Future<void> skipToPrevious() async {
-    await importMain.GlobalAudioService().playPrevious();
+    await import_main.GlobalAudioService().playPrevious();
   }
 
   @override
-  Future<void> updateMediaItem(MediaItem item) async {
-    mediaItem.add(item);
+  Future<void> updateMediaItem(MediaItem mediaItem) async {
+    this.mediaItem.add(mediaItem);
   }
 
   // Method to set the file path and metadata
   Future<void> setAudioSource(String path, MediaItem item) async {
-    await updateMediaItem(item);
-    // Populate the queue so the notification shows prev/next controls correctly
-    queue.add([item]);
     try {
       await _player.setFilePath(path);
+
+      // Wait for duration before publishing to queue/mediaItem so the system's
+      // AudioMediaPlayerWrapper never sees a duration=0 mismatch (which breaks
+      // media button dispatch from earphones).
+      Duration? duration = _player.duration;
+      duration ??= await _player.durationStream
+          .firstWhere((d) => d != null, orElse: () => null)
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
+
+      final finalItem = duration != null ? item.copyWith(duration: duration) : item;
+      mediaItem.add(finalItem);
+      queue.add([finalItem]);
     } catch (e) {
+      // Fallback: publish item as-is so playback still works
+      mediaItem.add(item);
+      queue.add([item]);
       rethrow;
     }
   }

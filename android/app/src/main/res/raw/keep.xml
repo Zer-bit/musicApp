@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_music_notification,@drawable/ic_play,@drawable/ic_pause,@drawable/ic_skip_next,@drawable/ic_skip_previous,@drawable/ic_close" />
