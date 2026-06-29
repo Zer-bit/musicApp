@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'main.dart' show AppColors;
+import '../../core/theme/app_colors.dart';
 
 class TutorialSlide {
   final IconData icon;
