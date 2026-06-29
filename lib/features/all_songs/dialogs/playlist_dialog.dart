@@ -11,10 +11,9 @@ void showAddToPlaylistDialog(
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
-      backgroundColor: Colors.grey.shade900,
-      title: const Text(
+      title: Text(
         'Add to Playlist',
-        style: TextStyle(color: Colors.white),
+        style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
       ),
       content: SizedBox(
         width: double.maxFinite,
@@ -42,7 +41,7 @@ void showAddToPlaylistDialog(
                     title: Text(
                       playlist['name'],
                       style: TextStyle(
-                        color: isAdded ? AppColors.purple : Colors.white,
+                        color: isAdded ? AppColors.purple : Theme.of(context).textTheme.bodyLarge?.color,
                       ),
                     ),
                     trailing: Icon(

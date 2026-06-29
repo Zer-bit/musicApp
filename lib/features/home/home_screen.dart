@@ -256,7 +256,9 @@ class _HomeScreenState extends State<HomeScreen> {
             _selectedIndex = index;
           });
         },
-        backgroundColor: Colors.grey.shade900,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey.shade900
+            : Colors.white,
         selectedItemColor: AppColors.blue,
         unselectedItemColor: Colors.grey,
         items: const [

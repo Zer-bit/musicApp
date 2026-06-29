@@ -5,12 +5,14 @@ import 'dart:async';
 import 'app.dart';
 import 'core/audio_handler.dart';
 import 'core/services/audio_service.dart';
+import 'core/services/theme_service.dart';
 
 export 'core/theme/app_colors.dart' show AppColors;
 export 'core/services/audio_service.dart' show GlobalAudioService;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await ThemeService().init();
 
   // runApp() MUST be called BEFORE AudioService.init().
   // AudioService.init() binds to MediaBrowserServiceCompat which requires

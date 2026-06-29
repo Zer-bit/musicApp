@@ -10,8 +10,7 @@ void showSleepTimerDialog(
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
-      backgroundColor: Colors.grey.shade900,
-      title: const Text('Sleep Timer', style: TextStyle(color: Colors.white)),
+      title: Text('Sleep Timer', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -28,26 +27,26 @@ void showSleepTimerDialog(
               stream: Stream.periodic(const Duration(seconds: 1)),
               builder: (context, snapshot) {
                 if (audioService.sleepEndTime == null) {
-                  return const Text(
+                  return Text(
                     '--:--',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
                   );
                 }
                 final remaining = audioService.sleepEndTime!.difference(
                   DateTime.now(),
                 );
                 if (remaining.isNegative) {
-                  return const Text(
+                  return Text(
                     '00:00',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
                   );
                 }
                 final minutes = remaining.inMinutes;
                 final seconds = remaining.inSeconds % 60;
                 return Text(
                   '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.bodyLarge?.color,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
@@ -71,10 +70,7 @@ void showSleepTimerDialog(
             ),
             const SizedBox(height: 16),
             ListTile(
-              title: const Text(
-                '15 minutes',
-                style: TextStyle(color: Colors.white),
-              ),
+              title: const Text('15 minutes'),
               leading: const Icon(Icons.timer, color: AppColors.purple),
               onTap: () {
                 audioService.setSleepTimer(const Duration(minutes: 15));
@@ -89,10 +85,7 @@ void showSleepTimerDialog(
               },
             ),
             ListTile(
-              title: const Text(
-                '30 minutes',
-                style: TextStyle(color: Colors.white),
-              ),
+              title: const Text('30 minutes'),
               leading: const Icon(Icons.timer, color: AppColors.purple),
               onTap: () {
                 audioService.setSleepTimer(const Duration(minutes: 30));
@@ -107,10 +100,7 @@ void showSleepTimerDialog(
               },
             ),
             ListTile(
-              title: const Text(
-                '45 minutes',
-                style: TextStyle(color: Colors.white),
-              ),
+              title: const Text('45 minutes'),
               leading: const Icon(Icons.timer, color: AppColors.purple),
               onTap: () {
                 audioService.setSleepTimer(const Duration(minutes: 45));
@@ -125,10 +115,7 @@ void showSleepTimerDialog(
               },
             ),
             ListTile(
-              title: const Text(
-                '1 hour',
-                style: TextStyle(color: Colors.white),
-              ),
+              title: const Text('1 hour'),
               leading: const Icon(Icons.timer, color: AppColors.purple),
               onTap: () {
                 audioService.setSleepTimer(const Duration(hours: 1));

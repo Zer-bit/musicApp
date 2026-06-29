@@ -78,8 +78,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey.shade900,
-        title: const Text('Add Songs', style: TextStyle(color: Colors.white)),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey.shade900
+            : Colors.white,
+        title: Text('Add Songs', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
         content: SizedBox(
           width: double.maxFinite,
           child: widget.allSongs.isEmpty
@@ -105,7 +107,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                       title: Text(
                         song['title']!,
                         style: TextStyle(
-                          color: isAdded ? AppColors.purple : Colors.white,
+                          color: isAdded ? AppColors.purple : Theme.of(context).textTheme.bodyLarge?.color,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -174,7 +176,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
             padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _searchController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
               decoration: InputDecoration(
                 hintText: 'Search in playlist...',
                 hintStyle: TextStyle(color: Colors.grey.shade500),
@@ -191,7 +193,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                       )
                     : null,
                 filled: true,
-                fillColor: Colors.grey.shade900,
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey.shade900
+                    : Colors.grey.shade200,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -274,7 +278,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                         ),
                         title: Text(
                           song['title']!,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -297,7 +301,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                                   Icons.more_vert,
                                   color: Colors.grey,
                                 ),
-                                color: Colors.grey.shade900,
+                                color: Theme.of(context).cardColor,
                                 onSelected: (value) {
                                   if (value == 'remove') {
                                     widget.onRemoveSong(song['path']!);

@@ -90,7 +90,9 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.grey.shade900,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey.shade900
+              : Colors.grey.shade100,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.3),
@@ -123,8 +125,8 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                     children: [
                       Text(
                         currentSong['title'] ?? 'Unknown',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
                           fontWeight: FontWeight.bold,
                         ),
                         maxLines: 1,
@@ -153,8 +155,8 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                   icon: Icon(
                     _getLoopIcon(),
                     color: _audioService.loopMode != LoopMode.off
-                        ? AppColors.purple
-                        : Colors.grey,
+                      ? AppColors.purple
+                      : Colors.grey,
                   ),
                   onPressed: () => _audioService.toggleLoopMode(),
                 ),
@@ -195,7 +197,7 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.skip_previous, size: 32),
-                  color: Colors.white,
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
                   onPressed:
                       _audioService.currentPlaylist.isNotEmpty &&
                           _audioService.currentlyPlaying != null
@@ -228,7 +230,7 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                 const SizedBox(width: 16),
                 IconButton(
                   icon: const Icon(Icons.skip_next, size: 32),
-                  color: Colors.white,
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
                   onPressed:
                       _audioService.currentPlaylist.isNotEmpty &&
                           _audioService.currentlyPlaying != null

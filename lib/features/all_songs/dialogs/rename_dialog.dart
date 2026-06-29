@@ -20,11 +20,10 @@ void showRenameSongDialog({
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
-      backgroundColor: Colors.grey.shade900,
-      title: const Text('Rename Song', style: TextStyle(color: Colors.white)),
+      title: Text('Rename Song', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
       content: TextField(
         controller: controller,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
         autofocus: true,
         decoration: InputDecoration(
           hintText: 'Song name',

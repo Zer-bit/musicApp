@@ -7,6 +7,7 @@ import 'dart:convert';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/services/audio_service.dart';
+import '../../core/services/theme_service.dart';
 import '../tutorial/user_tutorial.dart';
 import 'dialogs/sleep_timer_dialog.dart';
 import 'dialogs/playlist_dialog.dart';
@@ -338,6 +339,92 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     );
   }
 
+  void _showThemeSelectionDialog(BuildContext context) {
+    final themeService = ThemeService();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey.shade900
+            : Colors.white,
+        title: Text(
+          'Choose Theme',
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyLarge?.color,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(
+                'System Default',
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
+                ),
+              ),
+              leading: Icon(
+                Icons.brightness_auto,
+                color: Theme.of(context).iconTheme.color,
+              ),
+              trailing: themeService.themeMode == ThemeMode.system
+                  ? const Icon(Icons.check, color: AppColors.purple)
+                  : null,
+              onTap: () {
+                themeService.setThemeMode(ThemeMode.system);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              title: Text(
+                'Light Mode',
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
+                ),
+              ),
+              leading: Icon(
+                Icons.light_mode,
+                color: Theme.of(context).iconTheme.color,
+              ),
+              trailing: themeService.themeMode == ThemeMode.light
+                  ? const Icon(Icons.check, color: AppColors.purple)
+                  : null,
+              onTap: () {
+                themeService.setThemeMode(ThemeMode.light);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              title: Text(
+                'Dark Mode',
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
+                ),
+              ),
+              leading: Icon(
+                Icons.dark_mode,
+                color: Theme.of(context).iconTheme.color,
+              ),
+              trailing: themeService.themeMode == ThemeMode.dark
+                  ? const Icon(Icons.check, color: AppColors.purple)
+                  : null,
+              onTap: () {
+                themeService.setThemeMode(ThemeMode.dark);
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: AppColors.purple)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _audioService.removeListener(_onAudioServiceUpdate);
@@ -368,11 +455,16 @@ class _AllSongsScreenState extends State<AllSongsScreen>
             tooltip: 'User Guide',
           ),
           IconButton(
+            icon: const Icon(Icons.palette_outlined),
+            onPressed: () => _showThemeSelectionDialog(context),
+            tooltip: 'Change Theme',
+          ),
+          IconButton(
             icon: Icon(
               Icons.timer,
               color: _audioService.sleepTimer != null
                   ? AppColors.purple
-                  : Colors.white,
+                  : Theme.of(context).iconTheme.color,
             ),
             onPressed: _showSleepTimerDialog,
             tooltip: 'Sleep Timer',
@@ -389,7 +481,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
             padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _searchController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
               decoration: InputDecoration(
                 hintText: 'Search songs...',
                 hintStyle: TextStyle(color: Colors.grey.shade500),
@@ -406,7 +498,9 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                       )
                     : null,
                 filled: true,
-                fillColor: Colors.grey.shade900,
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey.shade900
+                    : Colors.grey.shade200,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -537,7 +631,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                         ),
                         title: Text(
                           song['title']!,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -549,7 +643,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                         ),
                         trailing: PopupMenuButton<String>(
                           icon: const Icon(Icons.more_vert, color: Colors.grey),
-                          color: Colors.grey.shade900,
+                          color: Theme.of(context).cardColor,
                           onSelected: (value) {
                             if (value == 'add_to_playlist') {
                               _showAddToPlaylistDialog(
@@ -573,9 +667,9 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                               value: 'add_to_playlist',
                               child: Row(
                                 children: [
-                                  Icon(Icons.playlist_add, color: Colors.white),
+                                  Icon(Icons.playlist_add),
                                   SizedBox(width: 12),
-                                  Text('Add to Playlist', style: TextStyle(color: Colors.white)),
+                                  Text('Add to Playlist'),
                                 ],
                               ),
                             ),
@@ -583,9 +677,9 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                               value: 'rename',
                               child: Row(
                                 children: [
-                                  Icon(Icons.drive_file_rename_outline, color: Colors.white),
+                                  Icon(Icons.drive_file_rename_outline),
                                   SizedBox(width: 12),
-                                  Text('Rename Song', style: TextStyle(color: Colors.white)),
+                                  Text('Rename Song'),
                                 ],
                               ),
                             ),
@@ -598,14 +692,13 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                                     color:
                                         hasSavedLyrics
                                         ? AppColors.blue
-                                        : Colors.white,
+                                        : null,
                                   ),
                                   const SizedBox(width: 12),
                                   Text(
                                     hasSavedLyrics
                                         ? 'Open Lyrics'
                                         : 'Add Lyrics',
-                                    style: const TextStyle(color: Colors.white),
                                   ),
                                 ],
                               ),

@@ -10,18 +10,17 @@ void _showRemoveLyricsConfirmation({
     context: dialogContext,
     builder: (confirmContext) {
       return AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-            SizedBox(width: 8),
-            Text('Remove Lyrics', style: TextStyle(color: Colors.white)),
+            const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            const SizedBox(width: 8),
+            Text('Remove Lyrics', style: TextStyle(color: Theme.of(confirmContext).textTheme.bodyLarge?.color)),
           ],
         ),
-        content: const Text(
+        content: Text(
           'Are you sure you want to permanently delete the lyrics for this song?',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: Theme.of(confirmContext).textTheme.bodyMedium?.color?.withOpacity(0.8)),
         ),
         actions: [
           TextButton(
@@ -82,11 +81,11 @@ void showLyricsDialog({
               width: dialogWidth > 500 ? 500 : dialogWidth,
               height: dialogHeight > 600 ? 600 : dialogHeight,
               decoration: BoxDecoration(
-                gradient: AppColors.darkGradient,
+                color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.purple.withOpacity(0.3),
+                    color: AppColors.purple.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.3 : 0.15),
                     blurRadius: 20,
                     spreadRadius: 5,
                   ),
@@ -152,10 +151,14 @@ void showLyricsDialog({
                       margin: EdgeInsets.all(isSmallScreen ? 12 : 16),
                       padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.black.withOpacity(0.3)
+                            : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.1)
+                              : Colors.grey.shade300,
                           width: 1,
                         ),
                       ),
@@ -165,7 +168,7 @@ void showLyricsDialog({
                         expands: true,
                         readOnly: !isEditing,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
                           fontSize: isSmallScreen ? 14 : 16,
                           height: 1.5,
                         ),
@@ -178,7 +181,7 @@ void showLyricsDialog({
                                 'Your lyrics...'
                               : 'No lyrics saved for this song.',
                           hintStyle: TextStyle(
-                            color: Colors.white.withOpacity(0.3),
+                            color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.4),
                             fontSize: isSmallScreen ? 12 : 14,
                           ),
                           border: InputBorder.none,
@@ -304,8 +307,14 @@ void showLyricsDialog({
                                       ),
                                       label: const Text('Cancel'),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.grey.shade400,
-                                        side: BorderSide(color: Colors.grey.shade600),
+                                        foregroundColor: Theme.of(context).brightness == Brightness.dark
+                                            ? Colors.grey.shade400
+                                            : Colors.grey.shade700,
+                                        side: BorderSide(
+                                          color: Theme.of(context).brightness == Brightness.dark
+                                              ? Colors.grey.shade600
+                                              : Colors.grey.shade400,
+                                        ),
                                         padding: const EdgeInsets.symmetric(
                                           vertical: 12,
                                         ),
@@ -368,8 +377,14 @@ void showLyricsDialog({
                                       ),
                                       label: const Text('Cancel'),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.grey.shade400,
-                                        side: BorderSide(color: Colors.grey.shade600),
+                                        foregroundColor: Theme.of(context).brightness == Brightness.dark
+                                            ? Colors.grey.shade400
+                                            : Colors.grey.shade700,
+                                        side: BorderSide(
+                                          color: Theme.of(context).brightness == Brightness.dark
+                                              ? Colors.grey.shade600
+                                              : Colors.grey.shade400,
+                                        ),
                                         padding: const EdgeInsets.symmetric(
                                           vertical: 12,
                                         ),

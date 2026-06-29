@@ -396,7 +396,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
             padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _searchController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
               decoration: InputDecoration(
                 hintText: 'Search YouTube...',
                 hintStyle: TextStyle(color: Colors.grey.shade500),
@@ -421,7 +421,9 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
                   ],
                 ),
                 filled: true,
-                fillColor: Colors.grey.shade900,
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey.shade900
+                    : Colors.grey.shade200,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -515,8 +517,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
                         ),
                         title: Text(
                           video.title,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
                             fontSize: 14,
                           ),
                           maxLines: 2,
@@ -559,7 +561,9 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.grey.shade900,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey.shade900
+                    : Colors.grey.shade100,
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.3),
@@ -586,8 +590,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
                           children: [
                             Text(
                               _downloadingVideoTitle,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: Theme.of(context).textTheme.bodyLarge?.color,
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
                               ),

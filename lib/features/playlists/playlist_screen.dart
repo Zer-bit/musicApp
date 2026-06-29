@@ -34,11 +34,13 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey.shade900,
-        title: const Text('New Playlist', style: TextStyle(color: Colors.white)),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey.shade900
+            : Colors.white,
+        title: Text('New Playlist', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
         content: TextField(
           controller: controller,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
           decoration: const InputDecoration(
             hintText: 'Playlist name',
             hintStyle: TextStyle(color: Colors.grey),
@@ -68,8 +70,10 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey.shade900,
-        title: const Text('Delete Playlist', style: TextStyle(color: Colors.white)),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey.shade900
+            : Colors.white,
+        title: Text('Delete Playlist', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
         content: Text('Delete "${widget.playlists[index]['name']}"?', style: const TextStyle(color: Colors.grey)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
@@ -140,7 +144,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                     ),
                     child: Icon(isSystemPlaylist ? Icons.favorite : Icons.playlist_play, color: Colors.white),
                   ),
-                  title: Text(playlist['name'], style: const TextStyle(color: Colors.white)),
+                  title: Text(playlist['name'], style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
                   subtitle: Text(
                     '$songCount ${songCount == 1 ? 'song' : 'songs'}${isSystemPlaylist ? ' • Auto-updated' : ''}',
                     style: const TextStyle(color: Colors.grey),
@@ -149,7 +153,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                       ? null
                       : PopupMenuButton<String>(
                           icon: const Icon(Icons.more_vert, color: Colors.grey),
-                          color: Colors.grey.shade900,
+                          color: Theme.of(context).cardColor,
                           onSelected: (value) {
                             if (value == 'delete') _showDeleteConfirmation(context, index);
                           },

@@ -16,8 +16,7 @@ void showDeleteSongConfirmation({
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
-      backgroundColor: Colors.grey.shade900,
-      title: const Text('Delete Song', style: TextStyle(color: Colors.white)),
+      title: Text('Delete Song', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
       content: Text(
         'Are you sure you want to permanently delete "$songTitle"? This cannot be undone.',
         style: const TextStyle(color: Colors.grey),
