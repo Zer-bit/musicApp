@@ -40,7 +40,8 @@ void main() {
     expect(find.text('Welcome to Jezsic'), findsOneWidget);
   });
 
-  testWidgets('UserTutorialDialog stress navigation test', (WidgetTester tester) async {
+  testWidgets('UserTutorialDialog stress navigation test',
+      (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(

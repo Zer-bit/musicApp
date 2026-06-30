@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
-import '../../core/theme/app_colors.dart';
 import '../playlists/playlist_screen.dart';
 import '../all_songs/all_songs_screen.dart';
 import '../browse/browse_songs_screen.dart';
+import '../converter/converter_screen.dart';
 import '../player/mini_player.dart';
 import '../tutorial/user_tutorial.dart';
 
@@ -20,7 +20,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   final List<Map<String, String>> _songs = [];
   final Map<String, int> _playCount = {}; // Track play count for each song
-  final Map<String, String> _lyrics = {}; // Store lyrics for each song (path -> lyrics)
+  final Map<String, String> _lyrics =
+      {}; // Store lyrics for each song (path -> lyrics)
   final List<Map<String, dynamic>> _playlists = [
     {'name': 'Favorites', 'songs': <String>[], 'isSystem': true},
   ];
@@ -237,13 +238,24 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
 
+    final converterScreen = ConverterScreen(
+      onSongDownloaded: () {
+        setState(() {});
+      },
+    );
+
     return Scaffold(
       body: Column(
         children: [
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,
-              children: [allSongsScreen, playlistScreen, browseSongsScreen],
+              children: [
+                allSongsScreen,
+                playlistScreen,
+                browseSongsScreen,
+                converterScreen
+              ],
             ),
           ),
           const GlobalMiniPlayer(),
@@ -256,11 +268,11 @@ class _HomeScreenState extends State<HomeScreen> {
             _selectedIndex = index;
           });
         },
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? Colors.grey.shade900
-            : Colors.white,
-        selectedItemColor: AppColors.blue,
+        backgroundColor: Theme.of(context).cardColor,
+        selectedItemColor: Theme.of(context).primaryColor,
         unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType
+            .fixed, // ensures 4 items look good and don't shift/hide
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.music_note),
@@ -273,6 +285,10 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.cloud_download),
             label: 'Browse',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.swap_horizontal_circle_outlined),
+            label: 'Converter',
           ),
         ],
       ),

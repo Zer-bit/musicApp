@@ -4,7 +4,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 
+import '../../src/rust/api/simple.dart' as rust_api;
 import '../../core/theme/app_colors.dart';
 import '../../core/services/audio_service.dart';
 import '../../core/services/theme_service.dart';
@@ -54,6 +56,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
 
   static const String _cachedSongsKey = 'cached_songs_list';
   static const String _lastScanTimeKey = 'last_scan_time';
+  List<Map<String, String>>? _rustFilteredSongs;
+  String _rustFilteredQuery = '';
 
   @override
   void initState() {
@@ -72,6 +76,51 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     }
   }
 
+  Future<void> _runRustSearch(String query) async {
+    if (query.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _rustFilteredSongs = null;
+          _rustFilteredQuery = '';
+        });
+      }
+      return;
+    }
+
+    try {
+      final titles = widget.songs.map((s) => s['title'] ?? '').toList();
+      final artists = widget.songs.map((s) => s['artist'] ?? '').toList();
+
+      final indices = await rust_api.searchSongs(
+        titles: titles,
+        artists: artists,
+        query: query,
+      );
+
+      if (mounted && _searchQuery == query) {
+        setState(() {
+          _rustFilteredSongs = indices.map((idx) => widget.songs[idx]).toList();
+          _rustFilteredQuery = query;
+        });
+      }
+    } catch (e) {
+      // Fallback is handled in build()
+    }
+  }
+
+  @override
+  void didUpdateWidget(AllSongsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.songs != oldWidget.songs) {
+      if (_searchQuery.isNotEmpty) {
+        _runRustSearch(_searchQuery);
+      } else {
+        _rustFilteredSongs = null;
+        _rustFilteredQuery = '';
+      }
+    }
+  }
+
   Future<void> _loadCachedSongsOrScan() async {
     setState(() {
       _isLoading = true;
@@ -87,13 +136,28 @@ class _AllSongsScreenState extends State<AllSongsScreen>
             .map((item) => Map<String, String>.from(item as Map))
             .toList();
 
-        cachedSongs.sort((a, b) {
-          int dateA = int.tryParse(a['modifiedDate'] ?? '0') ?? 0;
-          int dateB = int.tryParse(b['modifiedDate'] ?? '0') ?? 0;
-          return dateB.compareTo(dateA);
-        });
+        try {
+          final titles = cachedSongs.map((s) => s['title'] ?? '').toList();
+          final artists = cachedSongs.map((s) => s['artist'] ?? '').toList();
+          final dates = cachedSongs.map((s) => int.tryParse(s['modifiedDate'] ?? '0') ?? 0).toList();
 
-        widget.onUpdateSongs(cachedSongs);
+          final indices = await rust_api.sortSongs(
+            titles: titles,
+            artists: artists,
+            modifiedDates: Int64List.fromList(dates),
+            sortBy: 'date',
+          );
+
+          final sortedSongs = indices.map((idx) => cachedSongs[idx]).toList();
+          widget.onUpdateSongs(sortedSongs);
+        } catch (e) {
+          cachedSongs.sort((a, b) {
+            int dateA = int.tryParse(a['modifiedDate'] ?? '0') ?? 0;
+            int dateB = int.tryParse(b['modifiedDate'] ?? '0') ?? 0;
+            return dateB.compareTo(dateA);
+          });
+          widget.onUpdateSongs(cachedSongs);
+        }
 
         setState(() {
           _hasPermission = true;
@@ -173,11 +237,21 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     });
   }
 
+  String _formatDuration(double seconds) {
+    if (seconds <= 0 || seconds.isNaN || seconds.isInfinite) return '0:00';
+    final int totalSecs = seconds.round();
+    final int mins = totalSecs ~/ 60;
+    final int secs = totalSecs % 60;
+    if (mins >= 60) {
+      final int hours = mins ~/ 60;
+      final int remainingMins = mins % 60;
+      return '$hours:${remainingMins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+    }
+    return '$mins:${secs.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _scanForMusicFiles() async {
     try {
-      List<Map<String, String>> foundSongs = [];
-      Set<String> addedPaths = {};
-
       List<String> musicPaths = [
         '/storage/emulated/0/Music',
         '/storage/emulated/0/Download',
@@ -202,18 +276,24 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         }
       } catch (_) {}
 
-      for (String path in musicPaths) {
-        Directory dir = Directory(path);
-        if (await dir.exists()) {
-          await _scanDirectory(dir, foundSongs, addedPaths);
-        }
-      }
+      // Call Rust native library to scan directory and extract audio metadata
+      final tempDir = await getTemporaryDirectory();
+      final rustSongs = await rust_api.scanMusicFiles(
+        directories: musicPaths,
+        cacheDir: tempDir.path,
+      );
 
-      foundSongs.sort((a, b) {
-        int dateA = int.tryParse(a['modifiedDate'] ?? '0') ?? 0;
-        int dateB = int.tryParse(b['modifiedDate'] ?? '0') ?? 0;
-        return dateB.compareTo(dateA);
-      });
+      final List<Map<String, String>> foundSongs = rustSongs.map((s) {
+        return {
+          'title': s.title,
+          'artist': s.artist.isEmpty ? 'Unknown Artist' : s.artist,
+          'album': s.album,
+          'path': s.path,
+          'duration': _formatDuration(s.durationSeconds),
+          'modifiedDate': s.modifiedDate.toString(),
+          'coverPath': s.coverPath,
+        };
+      }).toList();
 
       widget.onUpdateSongs(foundSongs);
       await _saveSongsToCache(foundSongs);
@@ -236,50 +316,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
           ),
         );
       }
-    }
-  }
-
-  Future<void> _scanDirectory(
-    Directory dir,
-    List<Map<String, String>> songs,
-    Set<String> addedPaths,
-  ) async {
-    try {
-      await for (var entity in dir.list(recursive: true, followLinks: false)) {
-        if (entity is File) {
-          String path = entity.path.toLowerCase();
-          if (path.endsWith('.mp3') ||
-              path.endsWith('.m4a') ||
-              path.endsWith('.wav')) {
-            if (addedPaths.contains(entity.path)) {
-              continue;
-            }
-
-            String fileName = entity.path.split('/').last;
-            String title = fileName.replaceAll(
-              RegExp(r'\.(mp3|m4a|wav)$', caseSensitive: false),
-              '',
-            );
-
-            const String duration = '0:00';
-
-            FileStat fileStat = await entity.stat();
-            String modifiedDate = fileStat.modified.millisecondsSinceEpoch.toString();
-
-            songs.add({
-              'title': title,
-              'artist': 'Unknown Artist',
-              'path': entity.path,
-              'duration': duration,
-              'modifiedDate': modifiedDate,
-            });
-
-            addedPaths.add(entity.path);
-          }
-        }
-      }
-    } catch (e) {
-      // Error scanning directory
     }
   }
 
@@ -316,7 +352,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     );
   }
 
-  void _showDeleteSongConfirmation(String songPath, String songTitle, int index) {
+  void _showDeleteSongConfirmation(
+      String songPath, String songTitle, int index) {
     showDeleteSongConfirmation(
       context: context,
       songPath: songPath,
@@ -344,9 +381,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? Colors.grey.shade900
-            : Colors.white,
+        backgroundColor: Theme.of(context).cardColor,
         title: Text(
           'Choose Theme',
           style: TextStyle(
@@ -418,7 +453,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close', style: TextStyle(color: AppColors.purple)),
+            child:
+                const Text('Close', style: TextStyle(color: AppColors.purple)),
           ),
         ],
       ),
@@ -436,12 +472,16 @@ class _AllSongsScreenState extends State<AllSongsScreen>
   Widget build(BuildContext context) {
     super.build(context);
 
-    final filteredSongs = widget.songs.where((song) {
-      final title = song['title']?.toLowerCase() ?? '';
-      final artist = song['artist']?.toLowerCase() ?? '';
-      final query = _searchQuery.toLowerCase();
-      return title.contains(query) || artist.contains(query);
-    }).toList();
+    final filteredSongs = _searchQuery.isEmpty
+        ? widget.songs
+        : ((_rustFilteredSongs != null && _rustFilteredQuery == _searchQuery)
+            ? _rustFilteredSongs!
+            : widget.songs.where((song) {
+                final title = song['title']?.toLowerCase() ?? '';
+                final artist = song['artist']?.toLowerCase() ?? '';
+                final query = _searchQuery.toLowerCase();
+                return title.contains(query) || artist.contains(query);
+              }).toList());
 
     return Scaffold(
       appBar: AppBar(
@@ -481,7 +521,8 @@ class _AllSongsScreenState extends State<AllSongsScreen>
             padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _searchController,
-              style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+              style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyLarge?.color),
               decoration: InputDecoration(
                 hintText: 'Search songs...',
                 hintStyle: TextStyle(color: Colors.grey.shade500),
@@ -493,14 +534,16 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                           setState(() {
                             _searchController.clear();
                             _searchQuery = '';
+                            _rustFilteredSongs = null;
+                            _rustFilteredQuery = '';
                           });
                         },
                       )
                     : null,
                 filled: true,
                 fillColor: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey.shade900
-                    : Colors.grey.shade200,
+                    ? Theme.of(context).cardColor
+                    : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -514,6 +557,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                 setState(() {
                   _searchQuery = value;
                 });
+                _runRustSearch(value);
               },
             ),
           ),
@@ -546,182 +590,216 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                     ),
                   )
                 : _isLoading
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(color: AppColors.purple),
-                        SizedBox(height: 16),
-                        Text(
-                          'Scanning for music files...',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  )
-                : filteredSongs.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          _searchQuery.isEmpty
-                              ? Icons.music_note
-                              : Icons.search_off,
-                          size: 60,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          _searchQuery.isEmpty
-                              ? 'No music files found'
-                              : 'No songs match your search',
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _searchQuery.isEmpty
-                              ? 'Add MP3 files to Music or Download folder'
-                              : 'Try a different search term',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                          ),
-                        ),
-                        if (_searchQuery.isEmpty) const SizedBox(height: 16),
-                        if (_searchQuery.isEmpty)
-                          ElevatedButton.icon(
-                            onPressed: _requestPermissionAndScan,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Scan Again'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.purple,
-                            ),
-                          ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: filteredSongs.length,
-                    itemExtent: 72.0,
-                    addAutomaticKeepAlives: false,
-                    addRepaintBoundaries: true,
-                    itemBuilder: (context, index) {
-                      final song = filteredSongs[index];
-                      final originalIndex = widget.songs.indexOf(song);
-                      final isCurrentSong =
-                          _audioService.currentlyPlaying == originalIndex;
-                      final isPlaying =
-                          isCurrentSong && _audioService.isPlaying;
-                      final bool hasSavedLyrics =
-                          widget.lyrics[song['path']]?.isNotEmpty == true;
-
-                      return ListTile(
-                        leading: Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            gradient: AppColors.purpleBlueGradient,
-                          ),
-                          child: Icon(
-                            isPlaying ? Icons.pause : Icons.music_note,
-                            color: Colors.white,
-                          ),
-                        ),
-                        title: Text(
-                          song['title']!,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          song['artist']!,
-                          style: const TextStyle(color: Colors.grey),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert, color: Colors.grey),
-                          color: Theme.of(context).cardColor,
-                          onSelected: (value) {
-                            if (value == 'add_to_playlist') {
-                              _showAddToPlaylistDialog(
-                                song['path']!,
-                                song['title']!,
-                              );
-                            } else if (value == 'rename') {
-                              _showRenameSongDialog(song['path']!, song['title']!, originalIndex);
-                            } else if (value == 'lyrics') {
-                              _showLyricsDialog(song['path']!, song['title']!);
-                            } else if (value == 'delete') {
-                              _showDeleteSongConfirmation(
-                                song['path']!,
-                                song['title']!,
-                                originalIndex,
-                              );
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'add_to_playlist',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.playlist_add),
-                                  SizedBox(width: 12),
-                                  Text('Add to Playlist'),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'rename',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.drive_file_rename_outline),
-                                  SizedBox(width: 12),
-                                  Text('Rename Song'),
-                                ],
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: 'lyrics',
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.lyrics,
-                                    color:
-                                        hasSavedLyrics
-                                        ? AppColors.blue
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    hasSavedLyrics
-                                        ? 'Open Lyrics'
-                                        : 'Add Lyrics',
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.delete_forever, color: Colors.red),
-                                  SizedBox(width: 12),
-                                  Text(
-                                    'Delete Song',
-                                    style: TextStyle(color: Colors.red),
-                                  ),
-                                ],
-                              ),
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(color: AppColors.purple),
+                            SizedBox(height: 16),
+                            Text(
+                              'Scanning for music files...',
+                              style: TextStyle(color: Colors.grey),
                             ),
                           ],
                         ),
-                        onTap: () => _playSong(song['path']!, originalIndex),
-                      );
-                    },
-                  ),
+                      )
+                    : filteredSongs.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _searchQuery.isEmpty
+                                      ? Icons.music_note
+                                      : Icons.search_off,
+                                  size: 60,
+                                  color: Colors.grey,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  _searchQuery.isEmpty
+                                      ? 'No music files found'
+                                      : 'No songs match your search',
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _searchQuery.isEmpty
+                                      ? 'Add MP3 files to Music or Download folder'
+                                      : 'Try a different search term',
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (_searchQuery.isEmpty)
+                                  const SizedBox(height: 16),
+                                if (_searchQuery.isEmpty)
+                                  ElevatedButton.icon(
+                                    onPressed: _requestPermissionAndScan,
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('Scan Again'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.purple,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: filteredSongs.length,
+                            itemExtent: 72.0,
+                            addAutomaticKeepAlives: false,
+                            addRepaintBoundaries: true,
+                            itemBuilder: (context, index) {
+                              final song = filteredSongs[index];
+                              final originalIndex = widget.songs.indexOf(song);
+                              final isCurrentSong =
+                                  _audioService.currentlyPlaying ==
+                                      originalIndex;
+                              final isPlaying =
+                                  isCurrentSong && _audioService.isPlaying;
+                              final bool hasSavedLyrics =
+                                  widget.lyrics[song['path']]?.isNotEmpty ==
+                                      true;
+
+                              return ListTile(
+                                leading: Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: Colors.grey.shade200,
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: song['coverPath'] != null &&
+                                          song['coverPath']!.isNotEmpty &&
+                                          File(song['coverPath']!).existsSync()
+                                      ? Image.file(
+                                          File(song['coverPath']!),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) =>
+                                              Container(
+                                            decoration: BoxDecoration(
+                                              gradient: AppColors.purpleBlueGradient,
+                                            ),
+                                            child: Icon(
+                                              isPlaying ? Icons.pause : Icons.music_note,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        )
+                                      : Container(
+                                          decoration: BoxDecoration(
+                                            gradient: AppColors.purpleBlueGradient,
+                                          ),
+                                          child: Icon(
+                                            isPlaying ? Icons.pause : Icons.music_note,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                ),
+                                title: Text(
+                                  song['title']!,
+                                  style: TextStyle(
+                                      color: Theme.of(context)
+                                          .textTheme
+                                          .bodyLarge
+                                          ?.color),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  song['artist']!,
+                                  style: const TextStyle(color: Colors.grey),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: PopupMenuButton<String>(
+                                  icon: const Icon(Icons.more_vert,
+                                      color: Colors.grey),
+                                  color: Theme.of(context).cardColor,
+                                  onSelected: (value) {
+                                    if (value == 'add_to_playlist') {
+                                      _showAddToPlaylistDialog(
+                                        song['path']!,
+                                        song['title']!,
+                                      );
+                                    } else if (value == 'rename') {
+                                      _showRenameSongDialog(song['path']!,
+                                          song['title']!, originalIndex);
+                                    } else if (value == 'lyrics') {
+                                      _showLyricsDialog(
+                                          song['path']!, song['title']!);
+                                    } else if (value == 'delete') {
+                                      _showDeleteSongConfirmation(
+                                        song['path']!,
+                                        song['title']!,
+                                        originalIndex,
+                                      );
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    const PopupMenuItem(
+                                      value: 'add_to_playlist',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.playlist_add),
+                                          SizedBox(width: 12),
+                                          Text('Add to Playlist'),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'rename',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.drive_file_rename_outline),
+                                          SizedBox(width: 12),
+                                          Text('Rename Song'),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'lyrics',
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.lyrics,
+                                            color: hasSavedLyrics
+                                                ? AppColors.blue
+                                                : null,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            hasSavedLyrics
+                                                ? 'Open Lyrics'
+                                                : 'Add Lyrics',
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'delete',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.delete_forever,
+                                              color: Colors.red),
+                                          SizedBox(width: 12),
+                                          Text(
+                                            'Delete Song',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () =>
+                                    _playSong(song['path']!, originalIndex),
+                              );
+                            },
+                          ),
           ),
         ],
       ),

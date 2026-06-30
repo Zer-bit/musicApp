@@ -20,7 +20,9 @@ void showRenameSongDialog({
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text('Rename Song', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+      title: Text('Rename Song',
+          style:
+              TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
       content: TextField(
         controller: controller,
         style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
@@ -28,8 +30,10 @@ void showRenameSongDialog({
         decoration: InputDecoration(
           hintText: 'Song name',
           hintStyle: TextStyle(color: Colors.grey.shade500),
-          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.purple)),
-          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.purple)),
+          enabledBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.purple)),
+          focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.purple)),
         ),
       ),
       actions: [
@@ -53,7 +57,8 @@ void showRenameSongDialog({
                 if (!status.isGranted) {
                   messenger.showSnackBar(
                     const SnackBar(
-                      content: Text('Storage permission required to rename files'),
+                      content:
+                          Text('Storage permission required to rename files'),
                       backgroundColor: Colors.red,
                     ),
                   );
@@ -89,7 +94,8 @@ void showRenameSongDialog({
               final ext = actualPath.contains('.')
                   ? actualPath.substring(actualPath.lastIndexOf('.'))
                   : '.m4a';
-              final safeName = newName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '').trim();
+              final safeName =
+                  newName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '').trim();
               if (safeName.isEmpty) {
                 messenger.showSnackBar(
                   const SnackBar(
@@ -140,7 +146,8 @@ void showRenameSongDialog({
               );
             }
           },
-          child: const Text('Rename', style: TextStyle(color: AppColors.purple)),
+          child:
+              const Text('Rename', style: TextStyle(color: AppColors.purple)),
         ),
       ],
     ),

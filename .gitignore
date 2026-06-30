@@ -43,3 +43,20 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local development files & plugins
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# Android local configurations & cache
+/android/local.properties
+/android/.gradle/
+/android/app/build/
+
+# iOS local configurations & cache
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/flutter_tools.metadata
+**/ios/podhelper.tmp
+.xcworkspace/

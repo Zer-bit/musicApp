@@ -6,12 +6,14 @@ import 'app.dart';
 import 'core/audio_handler.dart';
 import 'core/services/audio_service.dart';
 import 'core/services/theme_service.dart';
+import 'src/rust/frb_generated.dart';
 
 export 'core/theme/app_colors.dart' show AppColors;
 export 'core/services/audio_service.dart' show GlobalAudioService;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await RustLib.init();
   await ThemeService().init();
 
   // runApp() MUST be called BEFORE AudioService.init().

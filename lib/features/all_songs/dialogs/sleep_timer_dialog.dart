@@ -10,7 +10,9 @@ void showSleepTimerDialog(
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text('Sleep Timer', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+      title: Text('Sleep Timer',
+          style:
+              TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -29,7 +31,8 @@ void showSleepTimerDialog(
                 if (audioService.sleepEndTime == null) {
                   return Text(
                     '--:--',
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                    style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color),
                   );
                 }
                 final remaining = audioService.sleepEndTime!.difference(
@@ -38,7 +41,8 @@ void showSleepTimerDialog(
                 if (remaining.isNegative) {
                   return Text(
                     '00:00',
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                    style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color),
                   );
                 }
                 final minutes = remaining.inMinutes;

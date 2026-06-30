@@ -37,8 +37,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
   http.Client? _downloadClient;
 
   // API URL - Render Production
-  static const String apiUrl =
-      'https://youtube-mp3-api-fgve.onrender.com';
+  static const String apiUrl = 'https://youtube-mp3-api-fgve.onrender.com';
 
   @override
   void initState() {
@@ -126,7 +125,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
     });
 
     // Show foreground notification to keep download alive in background
-    DownloadNotificationService.show(video.title, body: 'Downloading... Please wait');
+    DownloadNotificationService.show(video.title,
+        body: 'Downloading... Please wait');
 
     // Request battery optimization exemption to keep network alive
     if (Platform.isAndroid) {
@@ -166,9 +166,9 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
           req.headers['Connection'] = 'keep-alive';
           req.body = jsonEncode({'url': videoUrl});
           apiResponse = await _downloadClient!.send(req).timeout(
-            const Duration(minutes: 5),
-            onTimeout: () => throw Exception('Connection timeout.'),
-          );
+                const Duration(minutes: 5),
+                onTimeout: () => throw Exception('Connection timeout.'),
+              );
           break; // success
         } catch (e) {
           retries++;
@@ -179,16 +179,21 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
         }
       }
 
-      if (apiResponse == null) throw Exception('Failed to connect to download service.');
+      if (apiResponse == null) {
+        throw Exception('Failed to connect to download service.');
+      }
 
       if (apiResponse.statusCode == 429) {
         await apiResponse.stream.bytesToString();
-        throw Exception('Too many requests. Please wait a moment and try again.');
+        throw Exception(
+            'Too many requests. Please wait a moment and try again.');
       } else if (apiResponse.statusCode == 404) {
-        throw Exception('API endpoint not found. The download service may be unavailable.');
+        throw Exception(
+            'API endpoint not found. The download service may be unavailable.');
       } else if (apiResponse.statusCode >= 500) {
         final body = await apiResponse.stream.bytesToString();
-        throw Exception('Server error (${apiResponse.statusCode}). Details: $body');
+        throw Exception(
+            'Server error (${apiResponse.statusCode}). Details: $body');
       } else if (apiResponse.statusCode != 200) {
         final body = await apiResponse.stream.bytesToString();
         throw Exception('API Error ${apiResponse.statusCode}: $body');
@@ -209,7 +214,9 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
         final match = RegExp(r'filename="?([^"]+)"?').firstMatch(disposition);
         if (match != null) {
           final fname = match.group(1)!;
-          apiTitle = fname.contains('.') ? fname.substring(0, fname.lastIndexOf('.')) : fname;
+          apiTitle = fname.contains('.')
+              ? fname.substring(0, fname.lastIndexOf('.'))
+              : fname;
           fileExt = fname.contains('.') ? fname.split('.').last : 'm4a';
         }
       }
@@ -228,7 +235,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
           setState(() {
             _downloadedBytes = bytes.length;
             _totalBytes = contentLength > 0 ? contentLength : bytes.length;
-            _downloadProgress = _totalBytes > 0 ? _downloadedBytes / _totalBytes : 0;
+            _downloadProgress =
+                _totalBytes > 0 ? _downloadedBytes / _totalBytes : 0;
           });
         }
       }
@@ -240,7 +248,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
       });
 
       if (bytes.length < 1000) {
-        throw Exception('Downloaded file is too small. The URL may have expired.');
+        throw Exception(
+            'Downloaded file is too small. The URL may have expired.');
       }
 
       // Save file
@@ -306,21 +315,28 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
         if (msg.contains('cancelled')) {
           userMessage = 'Download cancelled.';
         } else if (msg.contains('429') || msg.contains('Too many requests')) {
-          userMessage = 'Too many requests. Please wait a moment and try again.';
-        } else if (msg.contains('unavailable') || msg.contains('Video unavailable')) {
-          userMessage = 'This video is unavailable or restricted in your region.';
+          userMessage =
+              'Too many requests. Please wait a moment and try again.';
+        } else if (msg.contains('unavailable') ||
+            msg.contains('Video unavailable')) {
+          userMessage =
+              'This video is unavailable or restricted in your region.';
         } else if (msg.contains('timeout') || msg.contains('timed out')) {
-          userMessage = 'Download timed out. The server may be busy, please try again.';
+          userMessage =
+              'Download timed out. The server may be busy, please try again.';
         } else if (msg.contains('500') || msg.contains('Server error')) {
           userMessage = 'Server error. Please try again in a moment.';
         } else if (msg.contains('404')) {
-          userMessage = 'Download service not found. Please check your connection.';
+          userMessage =
+              'Download service not found. Please check your connection.';
         } else if (msg.contains('too small')) {
           userMessage = 'Download failed - file was empty. Please try again.';
         } else if (msg.contains('Sign in') || msg.contains('bot')) {
-          userMessage = 'YouTube is blocking the download. Please try again later.';
+          userMessage =
+              'YouTube is blocking the download. Please try again later.';
         } else if (msg.contains('copyright') || msg.contains('blocked')) {
-          userMessage = 'This video cannot be downloaded due to copyright restrictions.';
+          userMessage =
+              'This video cannot be downloaded due to copyright restrictions.';
         } else {
           userMessage = 'Download failed. Please try again.';
         }
@@ -328,7 +344,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(userMessage),
-            backgroundColor: msg.contains('cancelled') ? Colors.orange : Colors.red,
+            backgroundColor:
+                msg.contains('cancelled') ? Colors.orange : Colors.red,
             duration: const Duration(seconds: 4),
           ),
         );
@@ -396,7 +413,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
             padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _searchController,
-              style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+              style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyLarge?.color),
               decoration: InputDecoration(
                 hintText: 'Search YouTube...',
                 hintStyle: TextStyle(color: Colors.grey.shade500),
@@ -422,8 +440,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
                 ),
                 filled: true,
                 fillColor: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey.shade900
-                    : Colors.grey.shade200,
+                    ? Theme.of(context).cardColor
+                    : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -457,103 +475,107 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
                     ),
                   )
                 : _searchResults.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.search,
-                          size: 60,
-                          color: Colors.grey.shade700,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Search for songs on YouTube',
-                          style: TextStyle(
-                            color: Colors.grey.shade500,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Downloads will be saved to Music folder',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _searchResults.length,
-                    itemExtent: 88.0,
-                    addAutomaticKeepAlives: false,
-                    addRepaintBoundaries: true,
-                    itemBuilder: (context, index) {
-                      final video = _searchResults[index];
-                      final isDownloading =
-                          _downloadingVideoId == video.id.value;
-
-                      return ListTile(
-                        leading: Container(
-                          width: 80,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            image: video.thumbnails.mediumResUrl.isNotEmpty
-                                ? DecorationImage(
-                                    image: NetworkImage(
-                                      video.thumbnails.mediumResUrl,
-                                    ),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                            color: Colors.grey.shade800,
-                          ),
-                          child: video.thumbnails.mediumResUrl.isEmpty
-                              ? const Icon(Icons.music_note, color: Colors.grey)
-                              : null,
-                        ),
-                        title: Text(
-                          video.title,
-                          style: TextStyle(
-                            color: Theme.of(context).textTheme.bodyLarge?.color,
-                            fontSize: 14,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          '${video.author} • ${_formatDuration(video.duration)}',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: isDownloading
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.purple,
-                                ),
-                              )
-                            : IconButton(
-                                icon: const Icon(
-                                  Icons.download,
-                                  color: AppColors.purple,
-                                ),
-                                onPressed: _isDownloading
-                                    ? null
-                                    : () => _downloadFromAPI(video),
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search,
+                              size: 60,
+                              color: Colors.grey.shade700,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Search for songs on YouTube',
+                              style: TextStyle(
+                                color: Colors.grey.shade500,
+                                fontSize: 16,
                               ),
-                      );
-                    },
-                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Downloads will be saved to Music folder',
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _searchResults.length,
+                        itemExtent: 88.0,
+                        addAutomaticKeepAlives: false,
+                        addRepaintBoundaries: true,
+                        itemBuilder: (context, index) {
+                          final video = _searchResults[index];
+                          final isDownloading =
+                              _downloadingVideoId == video.id.value;
+
+                          return ListTile(
+                            leading: Container(
+                              width: 80,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                image: video.thumbnails.mediumResUrl.isNotEmpty
+                                    ? DecorationImage(
+                                        image: NetworkImage(
+                                          video.thumbnails.mediumResUrl,
+                                        ),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                                color: Colors.grey.shade800,
+                              ),
+                              child: video.thumbnails.mediumResUrl.isEmpty
+                                  ? const Icon(Icons.music_note,
+                                      color: Colors.grey)
+                                  : null,
+                            ),
+                            title: Text(
+                              video.title,
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.color,
+                                fontSize: 14,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              '${video.author} • ${_formatDuration(video.duration)}',
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: isDownloading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.purple,
+                                    ),
+                                  )
+                                : IconButton(
+                                    icon: const Icon(
+                                      Icons.download,
+                                      color: AppColors.purple,
+                                    ),
+                                    onPressed: _isDownloading
+                                        ? null
+                                        : () => _downloadFromAPI(video),
+                                  ),
+                          );
+                        },
+                      ),
           ),
 
           // Download progress indicator
@@ -561,9 +583,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey.shade900
-                    : Colors.grey.shade100,
+                color: Theme.of(context).cardColor,
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.3),
@@ -591,7 +611,10 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
                             Text(
                               _downloadingVideoTitle,
                               style: TextStyle(
-                                color: Theme.of(context).textTheme.bodyLarge?.color,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.color,
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
                               ),

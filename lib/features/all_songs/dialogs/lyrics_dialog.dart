@@ -15,12 +15,20 @@ void _showRemoveLyricsConfirmation({
           children: [
             const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
             const SizedBox(width: 8),
-            Text('Remove Lyrics', style: TextStyle(color: Theme.of(confirmContext).textTheme.bodyLarge?.color)),
+            Text('Remove Lyrics',
+                style: TextStyle(
+                    color:
+                        Theme.of(confirmContext).textTheme.bodyLarge?.color)),
           ],
         ),
         content: Text(
           'Are you sure you want to permanently delete the lyrics for this song?',
-          style: TextStyle(color: Theme.of(confirmContext).textTheme.bodyMedium?.color?.withOpacity(0.8)),
+          style: TextStyle(
+              color: Theme.of(confirmContext)
+                  .textTheme
+                  .bodyMedium
+                  ?.color
+                  ?.withOpacity(0.8)),
         ),
         actions: [
           TextButton(
@@ -39,7 +47,8 @@ void _showRemoveLyricsConfirmation({
                 ),
               );
             },
-            child: const Text('Remove', style: TextStyle(color: Colors.redAccent)),
+            child:
+                const Text('Remove', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       );
@@ -85,7 +94,10 @@ void showLyricsDialog({
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.purple.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.3 : 0.15),
+                    color: AppColors.purple.withOpacity(
+                        Theme.of(context).brightness == Brightness.dark
+                            ? 0.3
+                            : 0.15),
                     blurRadius: 20,
                     spreadRadius: 5,
                   ),
@@ -175,13 +187,17 @@ void showLyricsDialog({
                         decoration: InputDecoration(
                           hintText: isEditing
                               ? 'Type or paste lyrics here...\n\n'
-                                'Verse 1:\n'
-                                'Your lyrics...\n\n'
-                                'Chorus:\n'
-                                'Your lyrics...'
+                                  'Verse 1:\n'
+                                  'Your lyrics...\n\n'
+                                  'Chorus:\n'
+                                  'Your lyrics...'
                               : 'No lyrics saved for this song.',
                           hintStyle: TextStyle(
-                            color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.4),
+                            color: Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.color
+                                ?.withOpacity(0.4),
                             fontSize: isSmallScreen ? 12 : 14,
                           ),
                           border: InputBorder.none,
@@ -201,7 +217,8 @@ void showLyricsDialog({
                                   SizedBox(
                                     width: double.infinity,
                                     child: OutlinedButton.icon(
-                                      onPressed: () => _showRemoveLyricsConfirmation(
+                                      onPressed: () =>
+                                          _showRemoveLyricsConfirmation(
                                         dialogContext: context,
                                         songPath: songPath,
                                         onSaveLyrics: onSaveLyrics,
@@ -213,7 +230,8 @@ void showLyricsDialog({
                                       label: const Text('Remove'),
                                       style: OutlinedButton.styleFrom(
                                         foregroundColor: Colors.red,
-                                        side: const BorderSide(color: Colors.red),
+                                        side:
+                                            const BorderSide(color: Colors.red),
                                         padding: const EdgeInsets.symmetric(
                                           vertical: 12,
                                         ),
@@ -247,7 +265,8 @@ void showLyricsDialog({
                                   if (hasLyrics)
                                     Expanded(
                                       child: OutlinedButton.icon(
-                                        onPressed: () => _showRemoveLyricsConfirmation(
+                                        onPressed: () =>
+                                            _showRemoveLyricsConfirmation(
                                           dialogContext: context,
                                           songPath: songPath,
                                           onSaveLyrics: onSaveLyrics,
@@ -259,7 +278,8 @@ void showLyricsDialog({
                                         label: const Text('Remove'),
                                         style: OutlinedButton.styleFrom(
                                           foregroundColor: Colors.red,
-                                          side: const BorderSide(color: Colors.red),
+                                          side: const BorderSide(
+                                              color: Colors.red),
                                           padding: const EdgeInsets.symmetric(
                                             vertical: 12,
                                           ),
@@ -307,11 +327,14 @@ void showLyricsDialog({
                                       ),
                                       label: const Text('Cancel'),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Theme.of(context).brightness == Brightness.dark
-                                            ? Colors.grey.shade400
-                                            : Colors.grey.shade700,
+                                        foregroundColor:
+                                            Theme.of(context).brightness ==
+                                                    Brightness.dark
+                                                ? Colors.grey.shade400
+                                                : Colors.grey.shade700,
                                         side: BorderSide(
-                                          color: Theme.of(context).brightness == Brightness.dark
+                                          color: Theme.of(context).brightness ==
+                                                  Brightness.dark
                                               ? Colors.grey.shade600
                                               : Colors.grey.shade400,
                                         ),
@@ -326,11 +349,13 @@ void showLyricsDialog({
                                     width: double.infinity,
                                     child: ElevatedButton.icon(
                                       onPressed: () {
-                                        final lyricsText = lyricsController.text.trim();
+                                        final lyricsText =
+                                            lyricsController.text.trim();
                                         if (lyricsText.isNotEmpty) {
                                           onSaveLyrics(songPath, lyricsText);
                                           Navigator.pop(context);
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
                                             const SnackBar(
                                               content: Text('✓ Lyrics saved'),
                                               backgroundColor: Colors.green,
@@ -338,7 +363,8 @@ void showLyricsDialog({
                                             ),
                                           );
                                         } else {
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
                                             const SnackBar(
                                               content: Text(
                                                 'Please enter some lyrics',
@@ -377,11 +403,14 @@ void showLyricsDialog({
                                       ),
                                       label: const Text('Cancel'),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Theme.of(context).brightness == Brightness.dark
-                                            ? Colors.grey.shade400
-                                            : Colors.grey.shade700,
+                                        foregroundColor:
+                                            Theme.of(context).brightness ==
+                                                    Brightness.dark
+                                                ? Colors.grey.shade400
+                                                : Colors.grey.shade700,
                                         side: BorderSide(
-                                          color: Theme.of(context).brightness == Brightness.dark
+                                          color: Theme.of(context).brightness ==
+                                                  Brightness.dark
                                               ? Colors.grey.shade600
                                               : Colors.grey.shade400,
                                         ),
@@ -396,11 +425,13 @@ void showLyricsDialog({
                                     flex: 2,
                                     child: ElevatedButton.icon(
                                       onPressed: () {
-                                        final lyricsText = lyricsController.text.trim();
+                                        final lyricsText =
+                                            lyricsController.text.trim();
                                         if (lyricsText.isNotEmpty) {
                                           onSaveLyrics(songPath, lyricsText);
                                           Navigator.pop(context);
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
                                             const SnackBar(
                                               content: Text('✓ Lyrics saved'),
                                               backgroundColor: Colors.green,
@@ -408,7 +439,8 @@ void showLyricsDialog({
                                             ),
                                           );
                                         } else {
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
                                             const SnackBar(
                                               content: Text(
                                                 'Please enter some lyrics',

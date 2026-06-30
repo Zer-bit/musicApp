@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'dart:io';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/services/audio_service.dart';
@@ -72,30 +73,27 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
             transitionsBuilder:
                 (context, animation, secondaryAnimation, child) =>
                     SlideTransition(
-                      position:
-                          Tween<Offset>(
-                            begin: const Offset(0, 1),
-                            end: Offset.zero,
-                          ).animate(
-                            CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeOut,
-                            ),
-                          ),
-                      child: child,
-                    ),
+              position: Tween<Offset>(
+                begin: const Offset(0, 1),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOut,
+                ),
+              ),
+              child: child,
+            ),
           ),
         );
       },
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? Colors.grey.shade900
-              : Colors.grey.shade100,
+          color: Theme.of(context).cardColor,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withOpacity(0.15),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -111,11 +109,34 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                   height: 50,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    gradient: AppColors.bluePurpleGradient,
+                    color: Theme.of(context).primaryColor,
                   ),
-                  child: Icon(
-                    _audioService.isPlaying ? Icons.pause : Icons.play_arrow,
-                    color: Colors.white,
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    children: [
+                      if (currentSong['coverPath'] != null &&
+                          currentSong['coverPath']!.isNotEmpty &&
+                          File(currentSong['coverPath']!).existsSync())
+                        Positioned.fill(
+                          child: Image.file(
+                            File(currentSong['coverPath']!),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      Positioned.fill(
+                        child: Container(
+                          color: currentSong['coverPath'] != null &&
+                                  currentSong['coverPath']!.isNotEmpty &&
+                                  File(currentSong['coverPath']!).existsSync()
+                              ? Colors.black.withOpacity(0.4)
+                              : Colors.transparent,
+                          child: Icon(
+                            _audioService.isPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -155,8 +176,8 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                   icon: Icon(
                     _getLoopIcon(),
                     color: _audioService.loopMode != LoopMode.off
-                      ? AppColors.purple
-                      : Colors.grey,
+                        ? AppColors.purple
+                        : Colors.grey,
                   ),
                   onPressed: () => _audioService.toggleLoopMode(),
                 ),
@@ -184,7 +205,9 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                     ? _audioService.totalDuration.inSeconds.toDouble()
                     : 1,
                 activeColor: AppColors.blue,
-                inactiveColor: Colors.grey.shade800,
+                inactiveColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey.shade800
+                    : Colors.grey.shade300,
                 onChanged: (value) async {
                   await _audioService.audioPlayer.seek(
                     Duration(seconds: value.toInt()),
@@ -198,8 +221,7 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                 IconButton(
                   icon: const Icon(Icons.skip_previous, size: 32),
                   color: Theme.of(context).textTheme.bodyLarge?.color,
-                  onPressed:
-                      _audioService.currentPlaylist.isNotEmpty &&
+                  onPressed: _audioService.currentPlaylist.isNotEmpty &&
                           _audioService.currentlyPlaying != null
                       ? () => _audioService.playPrevious()
                       : null,
@@ -208,7 +230,7 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: AppColors.purpleBlueGradient,
+                    color: Theme.of(context).primaryColor,
                   ),
                   child: IconButton(
                     icon: Icon(
@@ -216,14 +238,13 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                       size: 32,
                     ),
                     color: Colors.white,
-                    onPressed:
-                        _audioService.currentlyPlaying != null &&
+                    onPressed: _audioService.currentlyPlaying != null &&
                             _audioService.currentlyPlaying! <
                                 _audioService.currentPlaylist.length
                         ? () => _audioService.playSong(
-                            currentSong['path']!,
-                            _audioService.currentlyPlaying!,
-                          )
+                              currentSong['path']!,
+                              _audioService.currentlyPlaying!,
+                            )
                         : null,
                   ),
                 ),
@@ -231,8 +252,7 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                 IconButton(
                   icon: const Icon(Icons.skip_next, size: 32),
                   color: Theme.of(context).textTheme.bodyLarge?.color,
-                  onPressed:
-                      _audioService.currentPlaylist.isNotEmpty &&
+                  onPressed: _audioService.currentPlaylist.isNotEmpty &&
                           _audioService.currentlyPlaying != null
                       ? () => _audioService.playNext()
                       : null,

@@ -18,15 +18,10 @@ class VinylPainter extends CustomPainter {
     }
 
     final sheenPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Colors.transparent,
-          AppColors.purple.withOpacity(0.18),
-          Colors.transparent,
-        ],
-        stops: const [0.35, 0.65, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: radius));
-    canvas.drawCircle(center, radius, sheenPaint);
+      ..color = AppColors.purple.withOpacity(0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = radius * 0.3;
+    canvas.drawCircle(center, radius * 0.65, sheenPaint);
 
     canvas.drawCircle(
       center,

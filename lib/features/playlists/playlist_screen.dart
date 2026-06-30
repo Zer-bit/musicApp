@@ -34,23 +34,28 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? Colors.grey.shade900
-            : Colors.white,
-        title: Text('New Playlist', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('New Playlist',
+            style:
+                TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
         content: TextField(
           controller: controller,
           style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
           decoration: const InputDecoration(
             hintText: 'Playlist name',
             hintStyle: TextStyle(color: Colors.grey),
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.purple)),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.purple)),
+            enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: AppColors.purple)),
+            focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: AppColors.purple)),
           ),
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child:
+                  const Text('Cancel', style: TextStyle(color: Colors.grey))),
           TextButton(
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
@@ -59,7 +64,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                 setState(() {});
               }
             },
-            child: const Text('Create', style: TextStyle(color: AppColors.purple)),
+            child:
+                const Text('Create', style: TextStyle(color: AppColors.purple)),
           ),
         ],
       ),
@@ -70,13 +76,17 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? Colors.grey.shade900
-            : Colors.white,
-        title: Text('Delete Playlist', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
-        content: Text('Delete "${widget.playlists[index]['name']}"?', style: const TextStyle(color: Colors.grey)),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Delete Playlist',
+            style:
+                TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+        content: Text('Delete "${widget.playlists[index]['name']}"?',
+            style: const TextStyle(color: Colors.grey)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child:
+                  const Text('Cancel', style: TextStyle(color: Colors.grey))),
           TextButton(
             onPressed: () {
               widget.onRemovePlaylist(index);
@@ -116,13 +126,15 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                 children: [
                   const Icon(Icons.playlist_play, size: 60, color: Colors.grey),
                   const SizedBox(height: 16),
-                  const Text('No playlists yet', style: TextStyle(color: Colors.grey)),
+                  const Text('No playlists yet',
+                      style: TextStyle(color: Colors.grey)),
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: () => _showAddPlaylistDialog(context),
                     icon: const Icon(Icons.add),
                     label: const Text('Create Playlist'),
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.purple),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.purple),
                   ),
                 ],
               ),
@@ -140,11 +152,17 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                     height: 50,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      gradient: isSystemPlaylist ? AppColors.accentGradient : AppColors.purpleBlueGradient,
+                      gradient: isSystemPlaylist
+                          ? AppColors.accentGradient
+                          : AppColors.purpleBlueGradient,
                     ),
-                    child: Icon(isSystemPlaylist ? Icons.favorite : Icons.playlist_play, color: Colors.white),
+                    child: Icon(
+                        isSystemPlaylist ? Icons.favorite : Icons.playlist_play,
+                        color: Colors.white),
                   ),
-                  title: Text(playlist['name'], style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+                  title: Text(playlist['name'],
+                      style: TextStyle(
+                          color: Theme.of(context).textTheme.bodyLarge?.color)),
                   subtitle: Text(
                     '$songCount ${songCount == 1 ? 'song' : 'songs'}${isSystemPlaylist ? ' • Auto-updated' : ''}',
                     style: const TextStyle(color: Colors.grey),
@@ -155,7 +173,9 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                           icon: const Icon(Icons.more_vert, color: Colors.grey),
                           color: Theme.of(context).cardColor,
                           onSelected: (value) {
-                            if (value == 'delete') _showDeleteConfirmation(context, index);
+                            if (value == 'delete') {
+                              _showDeleteConfirmation(context, index);
+                            }
                           },
                           itemBuilder: (context) => [
                             const PopupMenuItem(
@@ -163,7 +183,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                               child: Row(children: [
                                 Icon(Icons.delete, color: Colors.red),
                                 SizedBox(width: 12),
-                                Text('Delete Playlist', style: TextStyle(color: Colors.red)),
+                                Text('Delete Playlist',
+                                    style: TextStyle(color: Colors.red)),
                               ]),
                             ),
                           ],
@@ -187,7 +208,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                           },
                           isSystemPlaylist: isSystemPlaylist,
                           playCount: widget.playCount,
-                          getLatestSongPaths: () => List<String>.from(widget.playlists[index]['songs']),
+                          getLatestSongPaths: () => List<String>.from(
+                              widget.playlists[index]['songs']),
                         ),
                       ),
                     ).then((_) => setState(() {}));

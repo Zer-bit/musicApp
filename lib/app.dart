@@ -10,7 +10,8 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+class _MyAppState extends State<MyApp>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final ThemeService _themeService = ThemeService();
   late AnimationController _fadeController;
   Brightness? _lastBrightness;
@@ -54,7 +55,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver, SingleTicker
     // Dark Theme (Original theme styling)
     final darkTheme = ThemeData.dark().copyWith(
       primaryColor: AppColors.purple,
-      scaffoldBackgroundColor: Colors.black,
+      scaffoldBackgroundColor: AppColors.background,
       cardColor: AppColors.surface,
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -76,7 +77,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver, SingleTicker
     // Light Theme
     final lightTheme = ThemeData.light().copyWith(
       primaryColor: AppColors.purple,
-      scaffoldBackgroundColor: const Color(0xFFF8F9FA),
+      scaffoldBackgroundColor: Colors.white,
       cardColor: Colors.white,
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -96,17 +97,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver, SingleTicker
     );
 
     // Resolve active theme data based on ThemeMode and system dispatcher brightness
-    final systemBrightness = WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    final systemBrightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
     final isDark = _themeService.themeMode == ThemeMode.dark ||
-        (_themeService.themeMode == ThemeMode.system && systemBrightness == Brightness.dark);
+        (_themeService.themeMode == ThemeMode.system &&
+            systemBrightness == Brightness.dark);
     final activeTheme = isDark ? darkTheme : lightTheme;
     final currentBrightness = activeTheme.brightness;
 
     // Detect theme brightness switches and trigger a smooth overlay transition
     if (_lastBrightness != null && _lastBrightness != currentBrightness) {
       _overlayColor = _lastBrightness == Brightness.dark
-          ? Colors.black
-          : const Color(0xFFF8F9FA);
+          ? AppColors.background
+          : Colors.white;
       _fadeController.forward(from: 0.0);
     }
     _lastBrightness = currentBrightness;

@@ -107,7 +107,8 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler {
           .firstWhere((d) => d != null, orElse: () => null)
           .timeout(const Duration(seconds: 5), onTimeout: () => null);
 
-      final finalItem = duration != null ? item.copyWith(duration: duration) : item;
+      final finalItem =
+          duration != null ? item.copyWith(duration: duration) : item;
       mediaItem.add(finalItem);
       queue.add([finalItem]);
     } catch (e) {

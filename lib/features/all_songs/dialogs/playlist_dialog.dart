@@ -41,7 +41,9 @@ void showAddToPlaylistDialog(
                     title: Text(
                       playlist['name'],
                       style: TextStyle(
-                        color: isAdded ? AppColors.purple : Theme.of(context).textTheme.bodyLarge?.color,
+                        color: isAdded
+                            ? AppColors.purple
+                            : Theme.of(context).textTheme.bodyLarge?.color,
                       ),
                     ),
                     trailing: Icon(

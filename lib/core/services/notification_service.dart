@@ -12,19 +12,23 @@ class DownloadNotificationService {
       const android = AndroidInitializationSettings('@mipmap/jezsic');
       await _plugin.initialize(const InitializationSettings(android: android));
       const channel = AndroidNotificationChannel(
-        _channelId, 'Downloads',
+        _channelId,
+        'Downloads',
         description: 'Song download progress',
         importance: Importance.low,
         playSound: false,
         enableVibration: false,
       );
-      await _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(channel);
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
       _initialized = true;
     } catch (_) {}
   }
 
-  static Future<void> show(String title, {String body = 'Downloading...'}) async {
+  static Future<void> show(String title,
+      {String body = 'Downloading...'}) async {
     try {
       await init();
       await _plugin.show(
@@ -33,7 +37,8 @@ class DownloadNotificationService {
         body,
         const NotificationDetails(
           android: AndroidNotificationDetails(
-            _channelId, 'Downloads',
+            _channelId,
+            'Downloads',
             channelDescription: 'Song download progress',
             importance: Importance.low,
             priority: Priority.low,

@@ -124,7 +124,7 @@ class _LoadingScreenState extends State<LoadingScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: AnimatedBuilder(
         animation: Listenable.merge([
           _vinylController,
@@ -144,13 +144,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                 fit: StackFit.expand,
                 children: [
                   Container(
-                    decoration: const BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment.center,
-                        radius: 1.2,
-                        colors: [Color(0xFF2D0066), Colors.black],
-                      ),
-                    ),
+                    color: Theme.of(context).scaffoldBackgroundColor,
                   ),
                   Center(
                     child: Opacity(
@@ -162,7 +156,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.deepPurple.shade400,
+                              color: Theme.of(context).primaryColor,
                               blurRadius: 72,
                               spreadRadius: 24,
                             ),
@@ -191,7 +185,8 @@ class _LoadingScreenState extends State<LoadingScreen>
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.deepPurple.shade400.withOpacity(0.8),
+                            color:
+                                Theme.of(context).primaryColor.withOpacity(0.8),
                             blurRadius: 24,
                             spreadRadius: 4,
                           ),
@@ -215,8 +210,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                       children: List.generate(_barCount, (i) {
                         final phase = _barPhases[i];
                         final t = _waveController.value;
-                        final height =
-                            12.0 +
+                        final height = 12.0 +
                             28.0 * (0.5 + 0.5 * math.sin(t * math.pi + phase));
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -226,14 +220,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                             height: height,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(4),
-                              gradient: LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [
-                                  Colors.deepPurple.shade400,
-                                  Colors.purpleAccent.shade100,
-                                ],
-                              ),
+                              color: Theme.of(context).primaryColor,
                             ),
                           ),
                         );
@@ -250,17 +237,22 @@ class _LoadingScreenState extends State<LoadingScreen>
                           opacity: _titleFade.value,
                           child: Transform.translate(
                             offset: Offset(0, 20 * (1 - _titleFade.value)),
-                            child: const Text(
+                            child: Text(
                               'Jezsic',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 44,
                                 fontWeight: FontWeight.w800,
-                                color: Colors.white,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.color,
                                 letterSpacing: 4,
                                 shadows: [
                                   Shadow(
-                                    color: Color(0xFF9C27B0),
+                                    color: Theme.of(context)
+                                        .primaryColor
+                                        .withOpacity(0.5),
                                     blurRadius: 24,
                                   ),
                                 ],
@@ -278,7 +270,11 @@ class _LoadingScreenState extends State<LoadingScreen>
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.purple.shade200,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.color
+                                    ?.withOpacity(0.7),
                                 letterSpacing: 2,
                                 fontWeight: FontWeight.w300,
                               ),

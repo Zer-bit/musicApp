@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:math' as math;
+import 'dart:io';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/services/audio_service.dart';
@@ -63,8 +64,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   @override
   Widget build(BuildContext context) {
-    final hasTrack =
-        _audioService.currentlyPlaying != null &&
+    final hasTrack = _audioService.currentlyPlaying != null &&
         _audioService.currentPlaylist.isNotEmpty;
     final song = hasTrack
         ? _audioService.currentPlaylist[_audioService.currentlyPlaying!]
@@ -76,15 +76,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     final maxSec = duration.inSeconds > 0 ? duration.inSeconds.toDouble() : 1.0;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF1A0033), Color(0xFF000814)],
-          ),
-        ),
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: SafeArea(
           child: Column(
             children: [
@@ -94,19 +88,19 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.keyboard_arrow_down,
-                        color: Colors.white,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
                         size: 32,
                       ),
                       onPressed: () => Navigator.pop(context),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Now Playing',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 1.2,
@@ -121,7 +115,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                             ? AppColors.purple
                             : Colors.grey,
                       ),
-                      color: Colors.grey.shade900,
+                      color: Theme.of(context).cardColor,
                       tooltip: 'Sleep Timer',
                       offset: const Offset(0, 40),
                       onSelected: (minutes) {
@@ -199,13 +193,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                           height: 240,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: const SweepGradient(
-                              colors: [
-                                Color(0xFF1A1A1A),
-                                Color(0xFF2A2A2A),
-                                Color(0xFF1A1A1A),
-                              ],
-                            ),
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF1E293B)
+                                    : const Color(0xFFE2E8F0),
                             boxShadow: [
                               BoxShadow(
                                 color: AppColors.purple.withOpacity(
@@ -236,17 +227,31 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                               }),
                               // Center label
                               Container(
-                                width: 80,
-                                height: 80,
+                                width: 100,
+                                height: 100,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  gradient: AppColors.purpleBlueGradient,
+                                  color: Theme.of(context).primaryColor,
                                 ),
-                                child: const Icon(
-                                  Icons.music_note,
-                                  color: Colors.white,
-                                  size: 36,
-                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: song['coverPath'] != null &&
+                                        song['coverPath']!.isNotEmpty &&
+                                        File(song['coverPath']!).existsSync()
+                                    ? Image.file(
+                                        File(song['coverPath']!),
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) =>
+                                            const Icon(
+                                          Icons.music_note,
+                                          color: Colors.white,
+                                          size: 40,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.music_note,
+                                        color: Colors.white,
+                                        size: 40,
+                                      ),
                               ),
                             ],
                           ),
@@ -271,8 +276,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: List.generate(5, (i) {
                             final phase = i * 0.6;
-                            final h =
-                                6.0 +
+                            final h = 6.0 +
                                 14.0 *
                                     (0.5 +
                                         0.5 *
@@ -289,7 +293,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                 height: h,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(2),
-                                  gradient: AppColors.purpleBlueGradient,
+                                  color: Theme.of(context).primaryColor,
                                 ),
                               ),
                             );
@@ -300,8 +304,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     Text(
                       title,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
@@ -333,17 +337,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                           enabledThumbRadius: 8,
                         ),
                         activeTrackColor: AppColors.blue,
-                        inactiveTrackColor: Colors.grey.shade800,
-                        thumbColor: Colors.white,
-                        overlayColor: AppColors.blue.withOpacity(0.2),
+                        inactiveTrackColor:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? Colors.grey.shade800
+                                : Colors.grey.shade300,
+                        thumbColor: Theme.of(context).primaryColor,
+                        overlayColor:
+                            Theme.of(context).primaryColor.withOpacity(0.2),
                       ),
                       child: Slider(
                         value: position.inSeconds.toDouble().clamp(0.0, maxSec),
                         max: maxSec,
                         onChanged: hasTrack
                             ? (v) => _audioService.audioPlayer.seek(
-                                Duration(seconds: v.toInt()),
-                              )
+                                  Duration(seconds: v.toInt()),
+                                )
                             : null,
                       ),
                     ),
@@ -394,14 +402,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     ),
                     // Previous
                     IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.skip_previous,
-                        color: Colors.white,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
                         size: 38,
                       ),
-                      onPressed: hasTrack
-                          ? () => _audioService.playPrevious()
-                          : null,
+                      onPressed:
+                          hasTrack ? () => _audioService.playPrevious() : null,
                     ),
                     // Play / Pause (big)
                     Container(
@@ -409,10 +416,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       height: 72,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: AppColors.purpleBlueGradient,
+                        color: Theme.of(context).primaryColor,
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.purple.withOpacity(0.5),
+                            color:
+                                Theme.of(context).primaryColor.withOpacity(0.4),
                             blurRadius: 20,
                             spreadRadius: 2,
                           ),
@@ -428,22 +436,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         ),
                         onPressed: hasTrack
                             ? () => _audioService.playSong(
-                                song['path']!,
-                                _audioService.currentlyPlaying!,
-                              )
+                                  song['path']!,
+                                  _audioService.currentlyPlaying!,
+                                )
                             : null,
                       ),
                     ),
                     // Next
                     IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.skip_next,
-                        color: Colors.white,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
                         size: 38,
                       ),
-                      onPressed: hasTrack
-                          ? () => _audioService.playNext()
-                          : null,
+                      onPressed:
+                          hasTrack ? () => _audioService.playNext() : null,
                     ),
                     // Loop
                     IconButton(

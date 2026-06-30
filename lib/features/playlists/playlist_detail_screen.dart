@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../../core/theme/app_colors.dart';
 import '../../core/services/audio_service.dart';
 import '../player/mini_player.dart';
@@ -78,10 +79,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? Colors.grey.shade900
-            : Colors.white,
-        title: Text('Add Songs', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Add Songs',
+            style:
+                TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
         content: SizedBox(
           width: double.maxFinite,
           child: widget.allSongs.isEmpty
@@ -97,7 +98,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                   itemCount: widget.allSongs.length,
                   itemBuilder: (context, index) {
                     final song = widget.allSongs[index];
-                    final isAdded = widget.getLatestSongPaths().contains(song['path']);
+                    final isAdded =
+                        widget.getLatestSongPaths().contains(song['path']);
 
                     return ListTile(
                       leading: Icon(
@@ -107,7 +109,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                       title: Text(
                         song['title']!,
                         style: TextStyle(
-                          color: isAdded ? AppColors.purple : Theme.of(context).textTheme.bodyLarge?.color,
+                          color: isAdded
+                              ? AppColors.purple
+                              : Theme.of(context).textTheme.bodyLarge?.color,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -176,7 +180,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
             padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _searchController,
-              style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+              style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyLarge?.color),
               decoration: InputDecoration(
                 hintText: 'Search in playlist...',
                 hintStyle: TextStyle(color: Colors.grey.shade500),
@@ -194,8 +199,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                     : null,
                 filled: true,
                 fillColor: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey.shade900
-                    : Colors.grey.shade200,
+                    ? Theme.of(context).cardColor
+                    : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -229,8 +234,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                         Text(
                           _searchQuery.isEmpty
                               ? (widget.isSystemPlaylist
-                                    ? 'Play songs to add them to Favorites'
-                                    : 'No songs in this playlist')
+                                  ? 'Play songs to add them to Favorites'
+                                  : 'No songs in this playlist')
                               : 'No songs match your search',
                           style: const TextStyle(color: Colors.grey),
                         ),
@@ -240,7 +245,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           ElevatedButton.icon(
                             onPressed: _showAddSongsDialog,
                             icon: const Icon(Icons.add, color: Colors.white),
-                            label: const Text('Add Songs', style: TextStyle(color: Colors.white)),
+                            label: const Text('Add Songs',
+                                style: TextStyle(color: Colors.white)),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.purple,
                               foregroundColor: Colors.white,
@@ -257,8 +263,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                       final songPath = song['path']!;
                       final globalIndex = _audioService.currentPlaylist
                           .indexWhere((s) => s['path'] == songPath);
-                      final isCurrentSong =
-                          globalIndex != -1 &&
+                      final isCurrentSong = globalIndex != -1 &&
                           _audioService.currentlyPlaying == globalIndex;
                       final isPlaying =
                           isCurrentSong && _audioService.isPlaying;
@@ -269,16 +274,41 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           height: 50,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
-                            gradient: AppColors.bluePurpleGradient,
+                            color: Colors.grey.shade200,
                           ),
-                          child: Icon(
-                            isPlaying ? Icons.pause : Icons.music_note,
-                            color: Colors.white,
-                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: song['coverPath'] != null &&
+                                  song['coverPath']!.isNotEmpty &&
+                                  File(song['coverPath']!).existsSync()
+                              ? Image.file(
+                                  File(song['coverPath']!),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Container(
+                                    decoration: BoxDecoration(
+                                      gradient: AppColors.bluePurpleGradient,
+                                    ),
+                                    child: Icon(
+                                      isPlaying ? Icons.pause : Icons.music_note,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  decoration: BoxDecoration(
+                                    gradient: AppColors.bluePurpleGradient,
+                                  ),
+                                  child: Icon(
+                                    isPlaying ? Icons.pause : Icons.music_note,
+                                    color: Colors.white,
+                                  ),
+                                ),
                         ),
                         title: Text(
                           song['title']!,
-                          style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                          style: TextStyle(
+                              color:
+                                  Theme.of(context).textTheme.bodyLarge?.color),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),

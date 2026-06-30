@@ -73,9 +73,9 @@ class GlobalAudioService {
     audioPlayer.positionStream
         .where((position) => position.inMilliseconds % 500 < 100)
         .listen((position) {
-          currentPosition = position;
-          notifyListeners();
-        });
+      currentPosition = position;
+      notifyListeners();
+    });
 
     audioPlayer.durationStream.listen((duration) {
       totalDuration = duration ?? Duration.zero;
@@ -140,7 +140,8 @@ class GlobalAudioService {
             songIndexBeforeDisconnect = currentlyPlaying;
             positionBeforeDisconnect = currentPosition;
           }
-        } else if (event.connectionState == BluetoothConnectionState.connected) {
+        } else if (event.connectionState ==
+            BluetoothConnectionState.connected) {
           // Earphone reconnected — resume if we were playing before
           if (wasPlayingBeforeDisconnect &&
               songIndexBeforeDisconnect != null &&
@@ -279,7 +280,9 @@ class GlobalAudioService {
     int nextIndex;
     if (isShuffleOn) {
       do {
-        nextIndex = (DateTime.now().millisecondsSinceEpoch + DateTime.now().microsecond) % currentPlaylist.length;
+        nextIndex = (DateTime.now().millisecondsSinceEpoch +
+                DateTime.now().microsecond) %
+            currentPlaylist.length;
       } while (nextIndex == currentlyPlaying && currentPlaylist.length > 1);
     } else {
       nextIndex = (currentlyPlaying! + 1) % currentPlaylist.length;
@@ -304,10 +307,13 @@ class GlobalAudioService {
     int prevIndex;
     if (isShuffleOn) {
       do {
-        prevIndex = (DateTime.now().millisecondsSinceEpoch + DateTime.now().microsecond) % currentPlaylist.length;
+        prevIndex = (DateTime.now().millisecondsSinceEpoch +
+                DateTime.now().microsecond) %
+            currentPlaylist.length;
       } while (prevIndex == currentlyPlaying && currentPlaylist.length > 1);
     } else {
-      prevIndex = (currentlyPlaying! - 1 + currentPlaylist.length) % currentPlaylist.length;
+      prevIndex = (currentlyPlaying! - 1 + currentPlaylist.length) %
+          currentPlaylist.length;
     }
 
     if (prevIndex >= 0 && prevIndex < currentPlaylist.length) {
@@ -327,7 +333,8 @@ class GlobalAudioService {
     switch (loopMode) {
       case LoopMode.off:
         loopMode = LoopMode.all;
-        audioPlayer.setLoopMode(LoopMode.off); // all-songs loop is handled by playNext()
+        audioPlayer.setLoopMode(
+            LoopMode.off); // all-songs loop is handled by playNext()
         break;
       case LoopMode.all:
         loopMode = LoopMode.one;
