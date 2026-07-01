@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-
+import '../../src/rust/api/playlist.dart' as rust_playlist;
+import '../../src/rust/api/models.dart' as rust_models;
 import '../playlists/playlist_screen.dart';
 import '../all_songs/all_songs_screen.dart';
 import '../browse/browse_songs_screen.dart';
@@ -45,8 +45,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _savePlayCount() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final encoded = _playCount.map((k, v) => MapEntry(k, v.toString()));
-      await prefs.setString('cached_play_count', jsonEncode(encoded));
+      final entries = _playCount.entries
+          .map((e) => rust_models.PlayCountEntry(path: e.key, count: e.value))
+          .toList();
+      final json = rust_playlist.serializePlayCounts(entries: entries);
+      await prefs.setString('cached_play_count', json);
     } catch (e) {
       // Error saving play count
     }
@@ -57,12 +60,12 @@ class _HomeScreenState extends State<HomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final json = prefs.getString('cached_play_count');
       if (json != null && json.isNotEmpty) {
-        final Map<String, dynamic> decoded = jsonDecode(json);
+        final entries = rust_playlist.deserializePlayCounts(json: json);
         setState(() {
           _playCount.clear();
-          decoded.forEach((key, value) {
-            _playCount[key] = int.tryParse(value.toString()) ?? 0;
-          });
+          for (final entry in entries) {
+            _playCount[entry.path] = entry.count;
+          }
         });
         _updateFavorites();
       }
@@ -72,11 +75,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _updateFavorites() {
-    final sortedSongs = _playCount.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    final top10 = sortedSongs.take(10).map((e) => e.key).toList();
-
+    final entries = _playCount.entries
+        .map((e) => rust_models.PlayCountEntry(path: e.key, count: e.value))
+        .toList();
+    final top10 = rust_playlist.computeFavorites(entries: entries, limit: 10);
     setState(() {
       _playlists[0]['songs'] = top10;
     });
@@ -98,18 +100,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _addSongToPlaylist(int playlistIndex, String songPath) {
     setState(() {
-      final songs = _playlists[playlistIndex]['songs'] as List<String>;
-      if (!songs.contains(songPath)) {
-        songs.add(songPath);
-      }
+      final p = _playlists[playlistIndex];
+      final playlistModel = rust_models.Playlist(
+        name: p['name'] as String,
+        songs: List<String>.from(p['songs'] as List),
+        isSystem: p['isSystem'] == true,
+      );
+      final updated = rust_playlist.addSongToPlaylist(
+        playlist: playlistModel,
+        songPath: songPath,
+      );
+      _playlists[playlistIndex]['songs'] = updated.songs;
     });
     _savePlaylists();
   }
 
   void _removeSongFromPlaylist(int playlistIndex, String songPath) {
     setState(() {
-      final songs = _playlists[playlistIndex]['songs'] as List<String>;
-      songs.remove(songPath);
+      final p = _playlists[playlistIndex];
+      final playlistModel = rust_models.Playlist(
+        name: p['name'] as String,
+        songs: List<String>.from(p['songs'] as List),
+        isSystem: p['isSystem'] == true,
+      );
+      final updated = rust_playlist.removeSongFromPlaylist(
+        playlist: playlistModel,
+        songPath: songPath,
+      );
+      _playlists[playlistIndex]['songs'] = updated.songs;
     });
     _savePlaylists();
   }
@@ -117,11 +135,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _savePlaylists() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final toSave = _playlists
-          .where((p) => p['isSystem'] != true)
-          .map((p) => {'name': p['name'], 'songs': p['songs']})
+      final playlistModels = _playlists
+          .map((p) => rust_models.Playlist(
+                name: p['name'] as String,
+                songs: List<String>.from(p['songs'] as List),
+                isSystem: p['isSystem'] == true,
+              ))
           .toList();
-      await prefs.setString('cached_playlists', jsonEncode(toSave));
+      final json = rust_playlist.serializePlaylists(playlists: playlistModels);
+      await prefs.setString('cached_playlists', json);
     } catch (e) {
       // Error saving playlists
     }
@@ -132,13 +154,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final json = prefs.getString('cached_playlists');
       if (json != null && json.isNotEmpty) {
-        final List<dynamic> decoded = jsonDecode(json);
+        final playlistModels = rust_playlist.deserializePlaylists(json: json);
         setState(() {
           _playlists.removeWhere((p) => p['isSystem'] != true);
-          for (final p in decoded) {
+          for (final p in playlistModels) {
             _playlists.add({
-              'name': p['name'],
-              'songs': List<String>.from(p['songs']),
+              'name': p.name,
+              'songs': p.songs,
             });
           }
         });
@@ -158,8 +180,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _saveLyricsToCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final lyricsJson = jsonEncode(_lyrics);
-      await prefs.setString('cached_lyrics', lyricsJson);
+      final entries = _lyrics.entries
+          .map((e) => rust_models.LyricsEntry(path: e.key, lyrics: e.value))
+          .toList();
+      final json = rust_playlist.serializeLyrics(entries: entries);
+      await prefs.setString('cached_lyrics', json);
     } catch (e) {
       // Error saving lyrics
     }
@@ -168,14 +193,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadLyricsFromCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final lyricsJson = prefs.getString('cached_lyrics');
-      if (lyricsJson != null && lyricsJson.isNotEmpty) {
-        final Map<String, dynamic> decoded = jsonDecode(lyricsJson);
+      final json = prefs.getString('cached_lyrics');
+      if (json != null && json.isNotEmpty) {
+        final entries = rust_playlist.deserializeLyrics(json: json);
         setState(() {
           _lyrics.clear();
-          decoded.forEach((key, value) {
-            _lyrics[key] = value.toString();
-          });
+          for (final entry in entries) {
+            _lyrics[entry.path] = entry.lyrics;
+          }
         });
       }
     } catch (e) {

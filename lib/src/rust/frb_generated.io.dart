@@ -3,7 +3,13 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
-import 'api/simple.dart';
+import 'api/file_ops.dart';
+import 'api/format.dart';
+import 'api/models.dart';
+import 'api/playback.dart';
+import 'api/playlist.dart';
+import 'api/scanner.dart';
+import 'api/search.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
@@ -22,6 +28,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  bool dco_decode_bool(dynamic raw);
+
+  @protected
+  Playlist dco_decode_box_autoadd_playlist(dynamic raw);
+
+  @protected
+  DeleteResult dco_decode_delete_result(dynamic raw);
+
+  @protected
   double dco_decode_f_64(dynamic raw);
 
   @protected
@@ -32,6 +47,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<LyricsEntry> dco_decode_list_lyrics_entry(dynamic raw);
+
+  @protected
+  List<PlayCountEntry> dco_decode_list_play_count_entry(dynamic raw);
+
+  @protected
+  List<Playlist> dco_decode_list_playlist(dynamic raw);
 
   @protected
   Int32List dco_decode_list_prim_i_32_strict(dynamic raw);
@@ -46,6 +70,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<SongMetadata> dco_decode_list_song_metadata(dynamic raw);
 
   @protected
+  LyricsEntry dco_decode_lyrics_entry(dynamic raw);
+
+  @protected
+  NextSongResult dco_decode_next_song_result(dynamic raw);
+
+  @protected
+  PlayCountEntry dco_decode_play_count_entry(dynamic raw);
+
+  @protected
+  Playlist dco_decode_playlist(dynamic raw);
+
+  @protected
+  RenameResult dco_decode_rename_result(dynamic raw);
+
+  @protected
   SongMetadata dco_decode_song_metadata(dynamic raw);
 
   @protected
@@ -58,6 +97,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
+  Playlist sse_decode_box_autoadd_playlist(SseDeserializer deserializer);
+
+  @protected
+  DeleteResult sse_decode_delete_result(SseDeserializer deserializer);
+
+  @protected
   double sse_decode_f_64(SseDeserializer deserializer);
 
   @protected
@@ -68,6 +116,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<LyricsEntry> sse_decode_list_lyrics_entry(SseDeserializer deserializer);
+
+  @protected
+  List<PlayCountEntry> sse_decode_list_play_count_entry(
+      SseDeserializer deserializer);
+
+  @protected
+  List<Playlist> sse_decode_list_playlist(SseDeserializer deserializer);
 
   @protected
   Int32List sse_decode_list_prim_i_32_strict(SseDeserializer deserializer);
@@ -83,6 +141,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       SseDeserializer deserializer);
 
   @protected
+  LyricsEntry sse_decode_lyrics_entry(SseDeserializer deserializer);
+
+  @protected
+  NextSongResult sse_decode_next_song_result(SseDeserializer deserializer);
+
+  @protected
+  PlayCountEntry sse_decode_play_count_entry(SseDeserializer deserializer);
+
+  @protected
+  Playlist sse_decode_playlist(SseDeserializer deserializer);
+
+  @protected
+  RenameResult sse_decode_rename_result(SseDeserializer deserializer);
+
+  @protected
   SongMetadata sse_decode_song_metadata(SseDeserializer deserializer);
 
   @protected
@@ -92,10 +165,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer);
+  void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
-  void sse_encode_String(String self, SseSerializer serializer);
+  void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_playlist(Playlist self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_delete_result(DeleteResult self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
@@ -108,6 +187,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_lyrics_entry(
+      List<LyricsEntry> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_play_count_entry(
+      List<PlayCountEntry> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_playlist(List<Playlist> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_i_32_strict(
@@ -126,6 +216,23 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       List<SongMetadata> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_lyrics_entry(LyricsEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_next_song_result(
+      NextSongResult self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_play_count_entry(
+      PlayCountEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_playlist(Playlist self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_rename_result(RenameResult self, SseSerializer serializer);
+
+  @protected
   void sse_encode_song_metadata(SongMetadata self, SseSerializer serializer);
 
   @protected
@@ -133,9 +240,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer);
 }
 
 // Section: wire_class

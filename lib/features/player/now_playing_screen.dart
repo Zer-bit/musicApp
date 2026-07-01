@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:math' as math;
 import 'dart:io';
+import '../../src/rust/api/format.dart' as rust_format;
 
 import '../../core/theme/app_colors.dart';
 import '../../core/services/audio_service.dart';
@@ -46,9 +47,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   }
 
   String _format(Duration d) {
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
+    return rust_format.formatDuration(seconds: d.inSeconds.toDouble());
   }
 
   IconData _loopIcon() {

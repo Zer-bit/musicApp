@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:async';
 
 import '../../core/theme/app_colors.dart';
+import '../../src/rust/api/format.dart' as rust_format;
 import '../../core/services/notification_service.dart';
 import '../tutorial/user_tutorial.dart';
 
@@ -64,12 +65,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
   }
 
   bool _isYouTubeUrl(String input) {
-    try {
-      final uri = Uri.parse(input);
-      return uri.host.contains('youtube.com') || uri.host.contains('youtu.be');
-    } catch (_) {
-      return false;
-    }
+    return rust_format.isYoutubeUrl(input: input);
   }
 
   Future<void> _searchYouTube(String query) async {
@@ -380,15 +376,12 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
   }
 
   String _sanitizeFileName(String fileName) {
-    // Remove invalid characters for file names
-    return fileName.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+    return rust_format.sanitizeDownloadFilename(name: fileName);
   }
 
   String _formatDuration(Duration? duration) {
     if (duration == null) return '0:00';
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+    return rust_format.formatDuration(seconds: duration.inSeconds.toDouble());
   }
 
   @override

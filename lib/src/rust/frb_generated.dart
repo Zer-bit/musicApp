@@ -3,7 +3,13 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
-import 'api/simple.dart';
+import 'api/file_ops.dart';
+import 'api/format.dart';
+import 'api/models.dart';
+import 'api/playback.dart';
+import 'api/playlist.dart';
+import 'api/scanner.dart';
+import 'api/search.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
@@ -58,9 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
       RustLibWire.fromExternalLibrary;
 
   @override
-  Future<void> executeRustInitializers() async {
-    await api.crateApiSimpleInitApp();
-  }
+  Future<void> executeRustInitializers() async {}
 
   @override
   ExternalLibraryLoaderConfig get defaultExternalLibraryLoaderConfig =>
@@ -70,7 +74,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 1083266925;
+  int get rustContentHash => -297072676;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -82,21 +86,83 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<void> crateApiSimpleInitApp();
+  Playlist crateApiPlaylistAddSongToPlaylist(
+      {required Playlist playlist, required String songPath});
 
-  Future<List<SongMetadata>> crateApiSimpleScanMusicFiles(
+  RenameResult crateApiFileOpsBuildRenamePath(
+      {required String originalPath, required String newName});
+
+  Future<List<String>> crateApiScannerBuildScanPaths(
+      {required String basePath, required String externalRoot});
+
+  List<String> crateApiPlaylistComputeFavorites(
+      {required List<PlayCountEntry> entries, required int limit});
+
+  Future<DeleteResult> crateApiFileOpsDeleteFile({required String path});
+
+  List<LyricsEntry> crateApiPlaylistDeserializeLyrics({required String json});
+
+  List<PlayCountEntry> crateApiPlaylistDeserializePlayCounts(
+      {required String json});
+
+  List<Playlist> crateApiPlaylistDeserializePlaylists({required String json});
+
+  String crateApiFormatFormatDuration({required double seconds});
+
+  String crateApiFormatFormatFileSize({required PlatformInt64 bytes});
+
+  bool crateApiFormatIsYoutubeUrl({required String input});
+
+  NextSongResult crateApiPlaybackNextSongIndex(
+      {required int currentIndex,
+      required int playlistLength,
+      required bool isShuffle,
+      required String loopMode,
+      required PlatformInt64 timestampSeed});
+
+  NextSongResult crateApiPlaybackPrevSongIndex(
+      {required int currentIndex,
+      required int playlistLength,
+      required bool isShuffle,
+      required int positionSeconds,
+      required PlatformInt64 timestampSeed});
+
+  Playlist crateApiPlaylistRemoveSongFromPlaylist(
+      {required Playlist playlist, required String songPath});
+
+  Future<RenameResult> crateApiFileOpsRenameFile(
+      {required String originalPath, required String newPath});
+
+  String crateApiFormatSanitizeDownloadFilename({required String name});
+
+  String crateApiFormatSanitizeFilename({required String name});
+
+  Future<List<SongMetadata>> crateApiScannerScanMusicFiles(
       {required List<String> directories, required String cacheDir});
 
-  Future<Int32List> crateApiSimpleSearchSongs(
+  Future<Int32List> crateApiSearchSearchSongs(
       {required List<String> titles,
       required List<String> artists,
       required String query});
 
-  Future<Int32List> crateApiSimpleSortSongs(
+  String crateApiPlaylistSerializeLyrics({required List<LyricsEntry> entries});
+
+  String crateApiPlaylistSerializePlayCounts(
+      {required List<PlayCountEntry> entries});
+
+  String crateApiPlaylistSerializePlaylists(
+      {required List<Playlist> playlists});
+
+  Future<Int32List> crateApiSearchSortSongs(
       {required List<String> titles,
       required List<String> artists,
       required Int64List modifiedDates,
       required String sortBy});
+
+  List<Playlist> crateApiFileOpsUpdatePlaylistsAfterRename(
+      {required List<Playlist> playlists,
+      required String oldPath,
+      required String newPath});
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -108,30 +174,470 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<void> crateApiSimpleInitApp() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
+  Playlist crateApiPlaylistAddSongToPlaylist(
+      {required Playlist playlist, required String songPath}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
-        pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 1, port: port_);
+        sse_encode_box_autoadd_playlist(playlist, serializer);
+        sse_encode_String(songPath, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
       },
       codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
+        decodeSuccessData: sse_decode_playlist,
         decodeErrorData: null,
       ),
-      constMeta: kCrateApiSimpleInitAppConstMeta,
-      argValues: [],
+      constMeta: kCrateApiPlaylistAddSongToPlaylistConstMeta,
+      argValues: [playlist, songPath],
       apiImpl: this,
     ));
   }
 
-  TaskConstMeta get kCrateApiSimpleInitAppConstMeta => const TaskConstMeta(
-        debugName: "init_app",
-        argNames: [],
+  TaskConstMeta get kCrateApiPlaylistAddSongToPlaylistConstMeta =>
+      const TaskConstMeta(
+        debugName: "add_song_to_playlist",
+        argNames: ["playlist", "songPath"],
       );
 
   @override
-  Future<List<SongMetadata>> crateApiSimpleScanMusicFiles(
+  RenameResult crateApiFileOpsBuildRenamePath(
+      {required String originalPath, required String newName}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(originalPath, serializer);
+        sse_encode_String(newName, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_rename_result,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiFileOpsBuildRenamePathConstMeta,
+      argValues: [originalPath, newName],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiFileOpsBuildRenamePathConstMeta =>
+      const TaskConstMeta(
+        debugName: "build_rename_path",
+        argNames: ["originalPath", "newName"],
+      );
+
+  @override
+  Future<List<String>> crateApiScannerBuildScanPaths(
+      {required String basePath, required String externalRoot}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(basePath, serializer);
+        sse_encode_String(externalRoot, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 3, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiScannerBuildScanPathsConstMeta,
+      argValues: [basePath, externalRoot],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiScannerBuildScanPathsConstMeta =>
+      const TaskConstMeta(
+        debugName: "build_scan_paths",
+        argNames: ["basePath", "externalRoot"],
+      );
+
+  @override
+  List<String> crateApiPlaylistComputeFavorites(
+      {required List<PlayCountEntry> entries, required int limit}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_list_play_count_entry(entries, serializer);
+        sse_encode_i_32(limit, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaylistComputeFavoritesConstMeta,
+      argValues: [entries, limit],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaylistComputeFavoritesConstMeta =>
+      const TaskConstMeta(
+        debugName: "compute_favorites",
+        argNames: ["entries", "limit"],
+      );
+
+  @override
+  Future<DeleteResult> crateApiFileOpsDeleteFile({required String path}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 5, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_delete_result,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiFileOpsDeleteFileConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiFileOpsDeleteFileConstMeta => const TaskConstMeta(
+        debugName: "delete_file",
+        argNames: ["path"],
+      );
+
+  @override
+  List<LyricsEntry> crateApiPlaylistDeserializeLyrics({required String json}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(json, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_lyrics_entry,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaylistDeserializeLyricsConstMeta,
+      argValues: [json],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaylistDeserializeLyricsConstMeta =>
+      const TaskConstMeta(
+        debugName: "deserialize_lyrics",
+        argNames: ["json"],
+      );
+
+  @override
+  List<PlayCountEntry> crateApiPlaylistDeserializePlayCounts(
+      {required String json}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(json, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_play_count_entry,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaylistDeserializePlayCountsConstMeta,
+      argValues: [json],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaylistDeserializePlayCountsConstMeta =>
+      const TaskConstMeta(
+        debugName: "deserialize_play_counts",
+        argNames: ["json"],
+      );
+
+  @override
+  List<Playlist> crateApiPlaylistDeserializePlaylists({required String json}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(json, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_playlist,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaylistDeserializePlaylistsConstMeta,
+      argValues: [json],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaylistDeserializePlaylistsConstMeta =>
+      const TaskConstMeta(
+        debugName: "deserialize_playlists",
+        argNames: ["json"],
+      );
+
+  @override
+  String crateApiFormatFormatDuration({required double seconds}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_f_64(seconds, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiFormatFormatDurationConstMeta,
+      argValues: [seconds],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiFormatFormatDurationConstMeta =>
+      const TaskConstMeta(
+        debugName: "format_duration",
+        argNames: ["seconds"],
+      );
+
+  @override
+  String crateApiFormatFormatFileSize({required PlatformInt64 bytes}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_i_64(bytes, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiFormatFormatFileSizeConstMeta,
+      argValues: [bytes],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiFormatFormatFileSizeConstMeta =>
+      const TaskConstMeta(
+        debugName: "format_file_size",
+        argNames: ["bytes"],
+      );
+
+  @override
+  bool crateApiFormatIsYoutubeUrl({required String input}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(input, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_bool,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiFormatIsYoutubeUrlConstMeta,
+      argValues: [input],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiFormatIsYoutubeUrlConstMeta => const TaskConstMeta(
+        debugName: "is_youtube_url",
+        argNames: ["input"],
+      );
+
+  @override
+  NextSongResult crateApiPlaybackNextSongIndex(
+      {required int currentIndex,
+      required int playlistLength,
+      required bool isShuffle,
+      required String loopMode,
+      required PlatformInt64 timestampSeed}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_i_32(currentIndex, serializer);
+        sse_encode_i_32(playlistLength, serializer);
+        sse_encode_bool(isShuffle, serializer);
+        sse_encode_String(loopMode, serializer);
+        sse_encode_i_64(timestampSeed, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_next_song_result,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaybackNextSongIndexConstMeta,
+      argValues: [
+        currentIndex,
+        playlistLength,
+        isShuffle,
+        loopMode,
+        timestampSeed
+      ],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaybackNextSongIndexConstMeta =>
+      const TaskConstMeta(
+        debugName: "next_song_index",
+        argNames: [
+          "currentIndex",
+          "playlistLength",
+          "isShuffle",
+          "loopMode",
+          "timestampSeed"
+        ],
+      );
+
+  @override
+  NextSongResult crateApiPlaybackPrevSongIndex(
+      {required int currentIndex,
+      required int playlistLength,
+      required bool isShuffle,
+      required int positionSeconds,
+      required PlatformInt64 timestampSeed}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_i_32(currentIndex, serializer);
+        sse_encode_i_32(playlistLength, serializer);
+        sse_encode_bool(isShuffle, serializer);
+        sse_encode_i_32(positionSeconds, serializer);
+        sse_encode_i_64(timestampSeed, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_next_song_result,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaybackPrevSongIndexConstMeta,
+      argValues: [
+        currentIndex,
+        playlistLength,
+        isShuffle,
+        positionSeconds,
+        timestampSeed
+      ],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaybackPrevSongIndexConstMeta =>
+      const TaskConstMeta(
+        debugName: "prev_song_index",
+        argNames: [
+          "currentIndex",
+          "playlistLength",
+          "isShuffle",
+          "positionSeconds",
+          "timestampSeed"
+        ],
+      );
+
+  @override
+  Playlist crateApiPlaylistRemoveSongFromPlaylist(
+      {required Playlist playlist, required String songPath}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_box_autoadd_playlist(playlist, serializer);
+        sse_encode_String(songPath, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_playlist,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaylistRemoveSongFromPlaylistConstMeta,
+      argValues: [playlist, songPath],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaylistRemoveSongFromPlaylistConstMeta =>
+      const TaskConstMeta(
+        debugName: "remove_song_from_playlist",
+        argNames: ["playlist", "songPath"],
+      );
+
+  @override
+  Future<RenameResult> crateApiFileOpsRenameFile(
+      {required String originalPath, required String newPath}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(originalPath, serializer);
+        sse_encode_String(newPath, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 15, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_rename_result,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiFileOpsRenameFileConstMeta,
+      argValues: [originalPath, newPath],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiFileOpsRenameFileConstMeta => const TaskConstMeta(
+        debugName: "rename_file",
+        argNames: ["originalPath", "newPath"],
+      );
+
+  @override
+  String crateApiFormatSanitizeDownloadFilename({required String name}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(name, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiFormatSanitizeDownloadFilenameConstMeta,
+      argValues: [name],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiFormatSanitizeDownloadFilenameConstMeta =>
+      const TaskConstMeta(
+        debugName: "sanitize_download_filename",
+        argNames: ["name"],
+      );
+
+  @override
+  String crateApiFormatSanitizeFilename({required String name}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(name, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiFormatSanitizeFilenameConstMeta,
+      argValues: [name],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiFormatSanitizeFilenameConstMeta =>
+      const TaskConstMeta(
+        debugName: "sanitize_filename",
+        argNames: ["name"],
+      );
+
+  @override
+  Future<List<SongMetadata>> crateApiScannerScanMusicFiles(
       {required List<String> directories, required String cacheDir}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -139,26 +645,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_list_String(directories, serializer);
         sse_encode_String(cacheDir, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 2, port: port_);
+            funcId: 18, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_song_metadata,
         decodeErrorData: null,
       ),
-      constMeta: kCrateApiSimpleScanMusicFilesConstMeta,
+      constMeta: kCrateApiScannerScanMusicFilesConstMeta,
       argValues: [directories, cacheDir],
       apiImpl: this,
     ));
   }
 
-  TaskConstMeta get kCrateApiSimpleScanMusicFilesConstMeta =>
+  TaskConstMeta get kCrateApiScannerScanMusicFilesConstMeta =>
       const TaskConstMeta(
         debugName: "scan_music_files",
         argNames: ["directories", "cacheDir"],
       );
 
   @override
-  Future<Int32List> crateApiSimpleSearchSongs(
+  Future<Int32List> crateApiSearchSearchSongs(
       {required List<String> titles,
       required List<String> artists,
       required String query}) {
@@ -169,25 +675,99 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_list_String(artists, serializer);
         sse_encode_String(query, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 3, port: port_);
+            funcId: 19, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_i_32_strict,
         decodeErrorData: null,
       ),
-      constMeta: kCrateApiSimpleSearchSongsConstMeta,
+      constMeta: kCrateApiSearchSearchSongsConstMeta,
       argValues: [titles, artists, query],
       apiImpl: this,
     ));
   }
 
-  TaskConstMeta get kCrateApiSimpleSearchSongsConstMeta => const TaskConstMeta(
+  TaskConstMeta get kCrateApiSearchSearchSongsConstMeta => const TaskConstMeta(
         debugName: "search_songs",
         argNames: ["titles", "artists", "query"],
       );
 
   @override
-  Future<Int32List> crateApiSimpleSortSongs(
+  String crateApiPlaylistSerializeLyrics({required List<LyricsEntry> entries}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_list_lyrics_entry(entries, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaylistSerializeLyricsConstMeta,
+      argValues: [entries],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaylistSerializeLyricsConstMeta =>
+      const TaskConstMeta(
+        debugName: "serialize_lyrics",
+        argNames: ["entries"],
+      );
+
+  @override
+  String crateApiPlaylistSerializePlayCounts(
+      {required List<PlayCountEntry> entries}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_list_play_count_entry(entries, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaylistSerializePlayCountsConstMeta,
+      argValues: [entries],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaylistSerializePlayCountsConstMeta =>
+      const TaskConstMeta(
+        debugName: "serialize_play_counts",
+        argNames: ["entries"],
+      );
+
+  @override
+  String crateApiPlaylistSerializePlaylists(
+      {required List<Playlist> playlists}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_list_playlist(playlists, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 22)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPlaylistSerializePlaylistsConstMeta,
+      argValues: [playlists],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPlaylistSerializePlaylistsConstMeta =>
+      const TaskConstMeta(
+        debugName: "serialize_playlists",
+        argNames: ["playlists"],
+      );
+
+  @override
+  Future<Int32List> crateApiSearchSortSongs(
       {required List<String> titles,
       required List<String> artists,
       required Int64List modifiedDates,
@@ -200,27 +780,80 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_list_prim_i_64_strict(modifiedDates, serializer);
         sse_encode_String(sortBy, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 4, port: port_);
+            funcId: 23, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_i_32_strict,
         decodeErrorData: null,
       ),
-      constMeta: kCrateApiSimpleSortSongsConstMeta,
+      constMeta: kCrateApiSearchSortSongsConstMeta,
       argValues: [titles, artists, modifiedDates, sortBy],
       apiImpl: this,
     ));
   }
 
-  TaskConstMeta get kCrateApiSimpleSortSongsConstMeta => const TaskConstMeta(
+  TaskConstMeta get kCrateApiSearchSortSongsConstMeta => const TaskConstMeta(
         debugName: "sort_songs",
         argNames: ["titles", "artists", "modifiedDates", "sortBy"],
+      );
+
+  @override
+  List<Playlist> crateApiFileOpsUpdatePlaylistsAfterRename(
+      {required List<Playlist> playlists,
+      required String oldPath,
+      required String newPath}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_list_playlist(playlists, serializer);
+        sse_encode_String(oldPath, serializer);
+        sse_encode_String(newPath, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 24)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_playlist,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiFileOpsUpdatePlaylistsAfterRenameConstMeta,
+      argValues: [playlists, oldPath, newPath],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiFileOpsUpdatePlaylistsAfterRenameConstMeta =>
+      const TaskConstMeta(
+        debugName: "update_playlists_after_rename",
+        argNames: ["playlists", "oldPath", "newPath"],
       );
 
   @protected
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  Playlist dco_decode_box_autoadd_playlist(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_playlist(raw);
+  }
+
+  @protected
+  DeleteResult dco_decode_delete_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return DeleteResult(
+      success: dco_decode_bool(arr[0]),
+      error: dco_decode_String(arr[1]),
+    );
   }
 
   @protected
@@ -248,6 +881,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<LyricsEntry> dco_decode_list_lyrics_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_lyrics_entry).toList();
+  }
+
+  @protected
+  List<PlayCountEntry> dco_decode_list_play_count_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_play_count_entry).toList();
+  }
+
+  @protected
+  List<Playlist> dco_decode_list_playlist(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_playlist).toList();
+  }
+
+  @protected
   Int32List dco_decode_list_prim_i_32_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Int32List;
@@ -269,6 +920,68 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<SongMetadata> dco_decode_list_song_metadata(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_song_metadata).toList();
+  }
+
+  @protected
+  LyricsEntry dco_decode_lyrics_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return LyricsEntry(
+      path: dco_decode_String(arr[0]),
+      lyrics: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  NextSongResult dco_decode_next_song_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return NextSongResult(
+      index: dco_decode_i_32(arr[0]),
+      found: dco_decode_bool(arr[1]),
+    );
+  }
+
+  @protected
+  PlayCountEntry dco_decode_play_count_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return PlayCountEntry(
+      path: dco_decode_String(arr[0]),
+      count: dco_decode_i_64(arr[1]),
+    );
+  }
+
+  @protected
+  Playlist dco_decode_playlist(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return Playlist(
+      name: dco_decode_String(arr[0]),
+      songs: dco_decode_list_String(arr[1]),
+      isSystem: dco_decode_bool(arr[2]),
+    );
+  }
+
+  @protected
+  RenameResult dco_decode_rename_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return RenameResult(
+      success: dco_decode_bool(arr[0]),
+      newPath: dco_decode_String(arr[1]),
+      error: dco_decode_String(arr[2]),
+    );
   }
 
   @protected
@@ -308,6 +1021,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool sse_decode_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
+  Playlist sse_decode_box_autoadd_playlist(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_playlist(deserializer));
+  }
+
+  @protected
+  DeleteResult sse_decode_delete_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_success = sse_decode_bool(deserializer);
+    var var_error = sse_decode_String(deserializer);
+    return DeleteResult(success: var_success, error: var_error);
+  }
+
+  @protected
   double sse_decode_f_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getFloat64();
@@ -333,6 +1066,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <String>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<LyricsEntry> sse_decode_list_lyrics_entry(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <LyricsEntry>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_lyrics_entry(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PlayCountEntry> sse_decode_list_play_count_entry(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PlayCountEntry>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_play_count_entry(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<Playlist> sse_decode_list_playlist(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <Playlist>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_playlist(deserializer));
     }
     return ans_;
   }
@@ -372,6 +1142,49 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  LyricsEntry sse_decode_lyrics_entry(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_path = sse_decode_String(deserializer);
+    var var_lyrics = sse_decode_String(deserializer);
+    return LyricsEntry(path: var_path, lyrics: var_lyrics);
+  }
+
+  @protected
+  NextSongResult sse_decode_next_song_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_index = sse_decode_i_32(deserializer);
+    var var_found = sse_decode_bool(deserializer);
+    return NextSongResult(index: var_index, found: var_found);
+  }
+
+  @protected
+  PlayCountEntry sse_decode_play_count_entry(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_path = sse_decode_String(deserializer);
+    var var_count = sse_decode_i_64(deserializer);
+    return PlayCountEntry(path: var_path, count: var_count);
+  }
+
+  @protected
+  Playlist sse_decode_playlist(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_name = sse_decode_String(deserializer);
+    var var_songs = sse_decode_list_String(deserializer);
+    var var_isSystem = sse_decode_bool(deserializer);
+    return Playlist(name: var_name, songs: var_songs, isSystem: var_isSystem);
+  }
+
+  @protected
+  RenameResult sse_decode_rename_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_success = sse_decode_bool(deserializer);
+    var var_newPath = sse_decode_String(deserializer);
+    var var_error = sse_decode_String(deserializer);
+    return RenameResult(
+        success: var_success, newPath: var_newPath, error: var_error);
+  }
+
+  @protected
   SongMetadata sse_decode_song_metadata(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_title = sse_decode_String(deserializer);
@@ -403,15 +1216,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8() != 0;
-  }
-
-  @protected
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_playlist(
+      Playlist self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_playlist(self, serializer);
+  }
+
+  @protected
+  void sse_encode_delete_result(DeleteResult self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.success, serializer);
+    sse_encode_String(self.error, serializer);
   }
 
   @protected
@@ -438,6 +1265,35 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_lyrics_entry(
+      List<LyricsEntry> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_lyrics_entry(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_play_count_entry(
+      List<PlayCountEntry> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_play_count_entry(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_playlist(List<Playlist> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_playlist(item, serializer);
     }
   }
 
@@ -476,6 +1332,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_lyrics_entry(LyricsEntry self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.path, serializer);
+    sse_encode_String(self.lyrics, serializer);
+  }
+
+  @protected
+  void sse_encode_next_song_result(
+      NextSongResult self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+    sse_encode_bool(self.found, serializer);
+  }
+
+  @protected
+  void sse_encode_play_count_entry(
+      PlayCountEntry self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.path, serializer);
+    sse_encode_i_64(self.count, serializer);
+  }
+
+  @protected
+  void sse_encode_playlist(Playlist self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.name, serializer);
+    sse_encode_list_String(self.songs, serializer);
+    sse_encode_bool(self.isSystem, serializer);
+  }
+
+  @protected
+  void sse_encode_rename_result(RenameResult self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.success, serializer);
+    sse_encode_String(self.newPath, serializer);
+    sse_encode_String(self.error, serializer);
+  }
+
+  @protected
   void sse_encode_song_metadata(SongMetadata self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.title, serializer);
@@ -496,11 +1391,5 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_unit(void self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self ? 1 : 0);
   }
 }

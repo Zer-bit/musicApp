@@ -4,6 +4,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:audio_service/audio_service.dart';
 import 'dart:async';
+import '../../src/rust/api/playback.dart' as rust_playback;
 
 import '../audio_handler.dart';
 
@@ -267,59 +268,53 @@ class GlobalAudioService {
   Future<void> playNext() async {
     if (currentPlaylist.isEmpty || currentlyPlaying == null) return;
 
-    if (loopMode == LoopMode.off &&
-        currentlyPlaying == currentPlaylist.length - 1 &&
-        !isShuffleOn) {
+    String loopModeStr = 'off';
+    if (loopMode == LoopMode.all) {
+      loopModeStr = 'all';
+    } else if (loopMode == LoopMode.one) {
+      loopModeStr = 'one';
+    }
+
+    final result = rust_playback.nextSongIndex(
+      currentIndex: currentlyPlaying!,
+      playlistLength: currentPlaylist.length,
+      isShuffle: isShuffleOn,
+      loopMode: loopModeStr,
+      timestampSeed: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    if (result.found) {
+      final path = currentPlaylist[result.index]['path'];
+      if (path != null && path.isNotEmpty) {
+        await playSong(path, result.index);
+      }
+    } else {
       if (isReady) audioPlayer.stop();
       isPlaying = false;
       currentlyPlaying = null;
       notifyListeners();
-      return;
-    }
-
-    int nextIndex;
-    if (isShuffleOn) {
-      do {
-        nextIndex = (DateTime.now().millisecondsSinceEpoch +
-                DateTime.now().microsecond) %
-            currentPlaylist.length;
-      } while (nextIndex == currentlyPlaying && currentPlaylist.length > 1);
-    } else {
-      nextIndex = (currentlyPlaying! + 1) % currentPlaylist.length;
-    }
-
-    if (nextIndex >= 0 && nextIndex < currentPlaylist.length) {
-      final path = currentPlaylist[nextIndex]['path'];
-      if (path != null && path.isNotEmpty) {
-        await playSong(path, nextIndex);
-      }
     }
   }
 
   Future<void> playPrevious() async {
     if (currentPlaylist.isEmpty || currentlyPlaying == null) return;
 
-    if (currentPosition.inSeconds > 3) {
-      if (isReady) audioPlayer.seek(Duration.zero);
-      return;
-    }
+    final result = rust_playback.prevSongIndex(
+      currentIndex: currentlyPlaying!,
+      playlistLength: currentPlaylist.length,
+      isShuffle: isShuffleOn,
+      positionSeconds: currentPosition.inSeconds,
+      timestampSeed: DateTime.now().millisecondsSinceEpoch,
+    );
 
-    int prevIndex;
-    if (isShuffleOn) {
-      do {
-        prevIndex = (DateTime.now().millisecondsSinceEpoch +
-                DateTime.now().microsecond) %
-            currentPlaylist.length;
-      } while (prevIndex == currentlyPlaying && currentPlaylist.length > 1);
-    } else {
-      prevIndex = (currentlyPlaying! - 1 + currentPlaylist.length) %
-          currentPlaylist.length;
-    }
-
-    if (prevIndex >= 0 && prevIndex < currentPlaylist.length) {
-      final path = currentPlaylist[prevIndex]['path'];
-      if (path != null && path.isNotEmpty) {
-        await playSong(path, prevIndex);
+    if (result.found) {
+      if (result.index == currentlyPlaying) {
+        if (isReady) audioPlayer.seek(Duration.zero);
+      } else {
+        final path = currentPlaylist[result.index]['path'];
+        if (path != null && path.isNotEmpty) {
+          await playSong(path, result.index);
+        }
       }
     }
   }

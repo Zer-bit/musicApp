@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
+import '../../../../src/rust/api/file_ops.dart' as rust_file_ops;
 
 import '../../../../core/services/audio_service.dart';
 
@@ -33,10 +33,8 @@ void showDeleteSongConfirmation({
             Navigator.pop(context);
             final messenger = ScaffoldMessenger.of(context);
             try {
-              final file = File(songPath);
-              if (await file.exists()) {
-                await file.delete();
-
+              final deleteResult = await rust_file_ops.deleteFile(path: songPath);
+              if (deleteResult.success) {
                 songs.removeAt(index);
                 if (audioService.currentlyPlaying == index) {
                   audioService.audioPlayer.stop();
@@ -60,8 +58,8 @@ void showDeleteSongConfirmation({
                 );
               } else {
                 messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('File not found'),
+                  SnackBar(
+                    content: Text(deleteResult.error.isNotEmpty ? deleteResult.error : 'File not found'),
                     backgroundColor: Colors.red,
                   ),
                 );

@@ -1,1 +1,7 @@
-pub mod simple;
+pub mod models;
+pub mod scanner;
+pub mod search;
+pub mod playlist;
+pub mod playback;
+pub mod file_ops;
+pub mod format;

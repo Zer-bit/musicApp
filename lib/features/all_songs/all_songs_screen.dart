@@ -6,7 +6,9 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 
-import '../../src/rust/api/simple.dart' as rust_api;
+import '../../src/rust/api/scanner.dart' as rust_scanner;
+import '../../src/rust/api/search.dart' as rust_search;
+import '../../src/rust/api/format.dart' as rust_format;
 import '../../core/theme/app_colors.dart';
 import '../../core/services/audio_service.dart';
 import '../../core/services/theme_service.dart';
@@ -91,7 +93,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
       final titles = widget.songs.map((s) => s['title'] ?? '').toList();
       final artists = widget.songs.map((s) => s['artist'] ?? '').toList();
 
-      final indices = await rust_api.searchSongs(
+      final indices = await rust_search.searchSongs(
         titles: titles,
         artists: artists,
         query: query,
@@ -141,7 +143,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
           final artists = cachedSongs.map((s) => s['artist'] ?? '').toList();
           final dates = cachedSongs.map((s) => int.tryParse(s['modifiedDate'] ?? '0') ?? 0).toList();
 
-          final indices = await rust_api.sortSongs(
+          final indices = await rust_search.sortSongs(
             titles: titles,
             artists: artists,
             modifiedDates: Int64List.fromList(dates),
@@ -237,33 +239,11 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     });
   }
 
-  String _formatDuration(double seconds) {
-    if (seconds <= 0 || seconds.isNaN || seconds.isInfinite) return '0:00';
-    final int totalSecs = seconds.round();
-    final int mins = totalSecs ~/ 60;
-    final int secs = totalSecs % 60;
-    if (mins >= 60) {
-      final int hours = mins ~/ 60;
-      final int remainingMins = mins % 60;
-      return '$hours:${remainingMins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-    }
-    return '$mins:${secs.toString().padLeft(2, '0')}';
-  }
+
 
   Future<void> _scanForMusicFiles() async {
     try {
-      List<String> musicPaths = [
-        '/storage/emulated/0/Music',
-        '/storage/emulated/0/Download',
-        '/storage/emulated/0/Downloads',
-        '/storage/emulated/0/Recordings',
-        '/storage/emulated/0/Recorder',
-        '/storage/emulated/0/VoiceRecorder',
-        '/storage/emulated/0/Audio',
-        '/storage/emulated/0/Record',
-        '/storage/emulated/0/DCIM',
-      ];
-
+      String extRoot = '';
       try {
         final extDir = await getExternalStorageDirectory();
         if (extDir != null) {
@@ -271,28 +251,18 @@ class _AllSongsScreenState extends State<AllSongsScreen>
           for (int i = 0; i < 4; i++) {
             root = root.parent;
           }
-          final rootPath = root.path;
-          for (final sub in [
-            'Music',
-            'Download',
-            'Downloads',
-            'Recordings',
-            'Recorder',
-            'VoiceRecorder',
-            'Audio',
-            'Record'
-          ]) {
-            final candidate = '$rootPath/$sub';
-            if (!musicPaths.contains(candidate)) {
-              musicPaths.add(candidate);
-            }
-          }
+          extRoot = root.path;
         }
       } catch (_) {}
 
+      final musicPaths = await rust_scanner.buildScanPaths(
+        basePath: '/storage/emulated/0',
+        externalRoot: extRoot,
+      );
+
       // Call Rust native library to scan directory and extract audio metadata
       final tempDir = await getTemporaryDirectory();
-      final rustSongs = await rust_api.scanMusicFiles(
+      final rustSongs = await rust_scanner.scanMusicFiles(
         directories: musicPaths,
         cacheDir: tempDir.path,
       );
@@ -303,7 +273,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
           'artist': s.artist.isEmpty ? 'Unknown Artist' : s.artist,
           'album': s.album,
           'path': s.path,
-          'duration': _formatDuration(s.durationSeconds),
+          'duration': rust_format.formatDuration(seconds: s.durationSeconds),
           'modifiedDate': s.modifiedDate.toString(),
           'coverPath': s.coverPath,
         };

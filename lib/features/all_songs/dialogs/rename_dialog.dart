@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
+import '../../../../src/rust/api/file_ops.dart' as rust_file_ops;
+import '../../../../src/rust/api/models.dart' as rust_models;
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/services/audio_service.dart';
@@ -90,39 +92,69 @@ void showRenameSongDialog({
                 return;
               }
 
-              final dir = sourceFile.parent.path;
-              final ext = actualPath.contains('.')
-                  ? actualPath.substring(actualPath.lastIndexOf('.'))
-                  : '.m4a';
-              final safeName =
-                  newName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '').trim();
-              if (safeName.isEmpty) {
+              final pathResult = rust_file_ops.buildRenamePath(
+                originalPath: actualPath,
+                newName: newName,
+              );
+
+              if (!pathResult.success) {
                 messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Invalid name'),
+                  SnackBar(
+                    content: Text(pathResult.error),
                     backgroundColor: Colors.red,
                   ),
                 );
                 return;
               }
-              final newPath = '$dir/$safeName$ext';
-              await sourceFile.copy(newPath);
-              try {
-                await sourceFile.delete();
-              } catch (_) {}
 
+              final newPath = pathResult.newPath;
+              final renameResult = await rust_file_ops.renameFile(
+                originalPath: actualPath,
+                newPath: newPath,
+              );
+
+              if (!renameResult.success) {
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(renameResult.error),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              final safeName = newPath.split('/').last.split('.').first;
               songs[index]['title'] = safeName;
               songs[index]['path'] = newPath;
               if (audioService.currentlyPlaying == index) {
                 audioService.currentPlaylist[index]['title'] = safeName;
                 audioService.currentPlaylist[index]['path'] = newPath;
               }
-              for (final playlist in playlists) {
-                final plSongs = playlist['songs'] as List<String>;
-                final idx = plSongs.indexOf(actualPath);
-                if (idx != -1) plSongs[idx] = newPath;
-                final idx2 = plSongs.indexOf(songPath);
-                if (idx2 != -1) plSongs[idx2] = newPath;
+
+              final playlistModels = playlists
+                  .map((p) => rust_models.Playlist(
+                        name: p['name'] as String,
+                        songs: List<String>.from(p['songs'] as List),
+                        isSystem: p['isSystem'] == true,
+                      ))
+                  .toList();
+
+              var updatedPlaylists = rust_file_ops.updatePlaylistsAfterRename(
+                playlists: playlistModels,
+                oldPath: actualPath,
+                newPath: newPath,
+              );
+
+              if (songPath != actualPath) {
+                updatedPlaylists = rust_file_ops.updatePlaylistsAfterRename(
+                  playlists: updatedPlaylists,
+                  oldPath: songPath,
+                  newPath: newPath,
+                );
+              }
+
+              for (int i = 0; i < playlists.length; i++) {
+                playlists[i]['songs'] = updatedPlaylists[i].songs;
               }
 
               onStateChanged();

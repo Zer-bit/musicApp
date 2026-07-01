@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/app_colors.dart';
+import '../../src/rust/api/format.dart' as rust_format;
 
 class ConverterScreen extends StatefulWidget {
   final VoidCallback onSongDownloaded;
@@ -239,7 +240,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
       if (originalName.contains('.')) {
         originalName = originalName.substring(0, originalName.lastIndexOf('.'));
       }
-      originalName = originalName.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+      originalName = rust_format.sanitizeFilename(name: originalName);
       if (originalName.isEmpty) originalName = 'converted_file';
 
       final finalFile = File('${saveDir.path}/$originalName.$_targetFormat');
