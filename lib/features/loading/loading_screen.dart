@@ -95,15 +95,19 @@ class _LoadingScreenState extends State<LoadingScreen>
       timeout++;
     }
 
-    _exitController.forward();
-    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+    _vinylController.stop();
+    _waveController.stop();
+    _glowController.stop();
+
+    await _exitController.forward();
     if (!mounted) return;
 
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
         pageBuilder: (context, anim1, anim2) => const HomeScreen(),
-        transitionDuration: const Duration(milliseconds: 400),
+        transitionDuration: const Duration(milliseconds: 300),
         transitionsBuilder: (context, anim, anim2, child) =>
             FadeTransition(opacity: anim, child: child),
       ),
@@ -214,8 +218,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                             28.0 * (0.5 + 0.5 * math.sin(t * math.pi + phase));
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 100),
+                          child: Container(
                             width: 7,
                             height: height,
                             decoration: BoxDecoration(
