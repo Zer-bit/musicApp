@@ -197,15 +197,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
       if (!notifStatus.isGranted) {
         await Permission.notification.request();
       }
-
-      final btConnect = await Permission.bluetoothConnect.status;
-      if (!btConnect.isGranted) {
-        await Permission.bluetoothConnect.request();
-      }
-      final btScan = await Permission.bluetoothScan.status;
-      if (!btScan.isGranted) {
-        await Permission.bluetoothScan.request();
-      }
     }
 
     PermissionStatus status = PermissionStatus.denied;
@@ -238,8 +229,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
       _isLoading = false;
     });
   }
-
-
 
   Future<void> _scanForMusicFiles() async {
     try {
