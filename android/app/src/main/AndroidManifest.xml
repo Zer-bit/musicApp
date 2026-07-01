@@ -10,6 +10,14 @@
         android:maxSdkVersion="29"/>
     <!-- Storage: READ_MEDIA_AUDIO for Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    <!-- Bluetooth: BLUETOOTH + BLUETOOTH_ADMIN for Android <= 11 (API 30) -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30"/>
+    <!-- Bluetooth: BLUETOOTH_SCAN + BLUETOOTH_CONNECT for Android 12+ (API 31+) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>

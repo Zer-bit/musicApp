@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'package:audio_service/audio_service.dart';
 import 'dart:async';
@@ -38,7 +39,11 @@ class GlobalAudioService {
   Timer? sleepTimer;
   DateTime? sleepEndTime;
 
-
+  // Bluetooth auto-resume
+  StreamSubscription<BluetoothAdapterState>? bluetoothSubscription;
+  bool wasPlayingBeforeDisconnect = false;
+  int? songIndexBeforeDisconnect;
+  Duration? positionBeforeDisconnect;
 
   final List<VoidCallback> _listeners = [];
 
@@ -99,6 +104,8 @@ class GlobalAudioService {
         }
       }
     });
+
+    _initBluetoothMonitoring();
   }
 
   Future<void> _initAudioSession() async {
@@ -107,6 +114,11 @@ class GlobalAudioService {
       await session.configure(const AudioSessionConfiguration.music());
 
       session.becomingNoisyEventStream.listen((_) {
+        if (isPlaying) {
+          wasPlayingBeforeDisconnect = true;
+          songIndexBeforeDisconnect = currentlyPlaying;
+          positionBeforeDisconnect = currentPosition;
+        }
         audioPlayer.pause();
       });
     } catch (e) {
@@ -114,7 +126,99 @@ class GlobalAudioService {
     }
   }
 
+  void _initBluetoothMonitoring() {
+    try {
+      // Watch adapter-level on/off (e.g. BT toggled off entirely)
+      bluetoothSubscription = FlutterBluePlus.adapterState.listen((state) {
+        if (state == BluetoothAdapterState.off ||
+            state == BluetoothAdapterState.unavailable) {
+          if (isPlaying) {
+            wasPlayingBeforeDisconnect = true;
+            songIndexBeforeDisconnect = currentlyPlaying;
+            positionBeforeDisconnect = currentPosition;
+          }
+        } else if (state == BluetoothAdapterState.on) {
+          if (wasPlayingBeforeDisconnect &&
+              songIndexBeforeDisconnect != null &&
+              songIndexBeforeDisconnect! < currentPlaylist.length) {
+            Future.delayed(const Duration(milliseconds: 1500), () {
+              _resumeAfterBluetoothReconnect();
+            });
+          }
+        }
+      });
 
+      // Watch individual device connect/disconnect (earphone plug in/out)
+      FlutterBluePlus.events.onConnectionStateChanged.listen((event) {
+        if (event.connectionState == BluetoothConnectionState.disconnected) {
+          // Earphone disconnected — save state so we can resume on reconnect
+          if (isPlaying) {
+            wasPlayingBeforeDisconnect = true;
+            songIndexBeforeDisconnect = currentlyPlaying;
+            positionBeforeDisconnect = currentPosition;
+          }
+        } else if (event.connectionState ==
+            BluetoothConnectionState.connected) {
+          // Earphone reconnected — resume if we were playing before
+          if (wasPlayingBeforeDisconnect &&
+              songIndexBeforeDisconnect != null &&
+              songIndexBeforeDisconnect! < currentPlaylist.length) {
+            Future.delayed(const Duration(milliseconds: 1500), () {
+              _resumeAfterBluetoothReconnect();
+            });
+          }
+        }
+      });
+    } catch (e) {
+      // Error initializing Bluetooth monitoring
+    }
+  }
+
+  Future<void> _resumeAfterBluetoothReconnect() async {
+    try {
+      if (songIndexBeforeDisconnect == null) return;
+
+      final song = currentPlaylist[songIndexBeforeDisconnect!];
+      final songPath = song['path']!;
+
+      final handler = await _audioHandler.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw Exception('Audio handler not ready'),
+      );
+
+      if (currentlyPlaying == songIndexBeforeDisconnect) {
+        // Safe play: the track is already loaded on the player, just resume it
+        await handler.play();
+      } else {
+        // Reload source if another song was selected in the meantime
+        await handler.setAudioSource(
+          songPath,
+          MediaItem(
+            id: songPath,
+            title: song['title'] ?? 'Unknown',
+            artist: song['artist'] ?? 'Unknown Artist',
+            duration: null,
+          ),
+        );
+        if (positionBeforeDisconnect != null) {
+          await handler.seek(positionBeforeDisconnect!);
+        }
+        await handler.play();
+      }
+
+      currentlyPlaying = songIndexBeforeDisconnect;
+      isPlaying = true;
+      notifyListeners();
+
+      wasPlayingBeforeDisconnect = false;
+      songIndexBeforeDisconnect = null;
+      positionBeforeDisconnect = null;
+    } catch (e) {
+      wasPlayingBeforeDisconnect = false;
+      songIndexBeforeDisconnect = null;
+      positionBeforeDisconnect = null;
+    }
+  }
 
   Future<void> playSong(String path, int index) async {
     try {
@@ -287,5 +391,6 @@ class GlobalAudioService {
   void dispose() {
     _player?.dispose();
     sleepTimer?.cancel();
+    bluetoothSubscription?.cancel();
   }
 }
