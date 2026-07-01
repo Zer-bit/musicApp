@@ -256,6 +256,11 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         '/storage/emulated/0/Music',
         '/storage/emulated/0/Download',
         '/storage/emulated/0/Downloads',
+        '/storage/emulated/0/Recordings',
+        '/storage/emulated/0/Recorder',
+        '/storage/emulated/0/VoiceRecorder',
+        '/storage/emulated/0/Audio',
+        '/storage/emulated/0/Record',
         '/storage/emulated/0/DCIM',
       ];
 
@@ -267,7 +272,16 @@ class _AllSongsScreenState extends State<AllSongsScreen>
             root = root.parent;
           }
           final rootPath = root.path;
-          for (final sub in ['Music', 'Download', 'Downloads']) {
+          for (final sub in [
+            'Music',
+            'Download',
+            'Downloads',
+            'Recordings',
+            'Recorder',
+            'VoiceRecorder',
+            'Audio',
+            'Record'
+          ]) {
             final candidate = '$rootPath/$sub';
             if (!musicPaths.contains(candidate)) {
               musicPaths.add(candidate);

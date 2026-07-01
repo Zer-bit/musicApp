@@ -23,7 +23,7 @@ pub struct SongMetadata {
 /// Runs on a native OS thread — never blocks the Dart UI.
 #[flutter_rust_bridge::frb]
 pub fn scan_music_files(directories: Vec<String>, cache_dir: String) -> Vec<SongMetadata> {
-    let extensions = ["mp3", "m4a", "wav", "flac", "ogg"];
+    let extensions = ["mp3", "m4a", "wav", "flac", "ogg", "aac"];
     let mut results = Vec::new();
     let mut seen_paths = std::collections::HashSet::new();
 
