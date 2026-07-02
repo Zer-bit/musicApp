@@ -18,6 +18,7 @@ import 'dialogs/playlist_dialog.dart';
 import 'dialogs/rename_dialog.dart';
 import 'dialogs/delete_dialog.dart';
 import 'dialogs/lyrics_dialog.dart';
+import 'dialogs/trim_dialog.dart';
 
 class AllSongsScreen extends StatefulWidget {
   final List<Map<String, String>> songs;
@@ -345,6 +346,19 @@ class _AllSongsScreenState extends State<AllSongsScreen>
       audioService: _audioService,
       saveSongsToCache: _saveSongsToCache,
       onStateChanged: () => setState(() {}),
+    );
+  }
+
+  void _showTrimAudioDialog(
+      String songPath, String currentTitle, String durationStr) {
+    TrimAudioDialog.show(
+      context: context,
+      songPath: songPath,
+      currentTitle: currentTitle,
+      durationStr: durationStr,
+      onStateChanged: () async {
+        await _scanForMusicFiles();
+      },
     );
   }
 
@@ -719,6 +733,12 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                                         song['title']!,
                                         originalIndex,
                                       );
+                                    } else if (value == 'trim') {
+                                      _showTrimAudioDialog(
+                                        song['path']!,
+                                        song['title']!,
+                                        song['duration'] ?? '0:00',
+                                      );
                                     }
                                   },
                                   itemBuilder: (context) => [
@@ -739,6 +759,16 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                                           Icon(Icons.drive_file_rename_outline),
                                           SizedBox(width: 12),
                                           Text('Rename Song'),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'trim',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.cut),
+                                          SizedBox(width: 12),
+                                          Text('Trim Audio'),
                                         ],
                                       ),
                                     ),

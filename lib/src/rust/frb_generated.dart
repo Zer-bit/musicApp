@@ -10,6 +10,7 @@ import 'api/playback.dart';
 import 'api/playlist.dart';
 import 'api/scanner.dart';
 import 'api/search.dart';
+import 'api/trimmer.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
@@ -74,7 +75,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -297072676;
+  int get rustContentHash => -346609585;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -158,6 +159,18 @@ abstract class RustLibApi extends BaseApi {
       required List<String> artists,
       required Int64List modifiedDates,
       required String sortBy});
+
+  Future<String> crateApiTrimmerTrimMp3(
+      {required String inputPath,
+      required String outputPath,
+      required double startSecs,
+      required double endSecs});
+
+  Future<String> crateApiTrimmerTrimWav(
+      {required String inputPath,
+      required String outputPath,
+      required double startSecs,
+      required double endSecs});
 
   List<Playlist> crateApiFileOpsUpdatePlaylistsAfterRename(
       {required List<Playlist> playlists,
@@ -798,6 +811,68 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiTrimmerTrimMp3(
+      {required String inputPath,
+      required String outputPath,
+      required double startSecs,
+      required double endSecs}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(inputPath, serializer);
+        sse_encode_String(outputPath, serializer);
+        sse_encode_f_64(startSecs, serializer);
+        sse_encode_f_64(endSecs, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 24, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiTrimmerTrimMp3ConstMeta,
+      argValues: [inputPath, outputPath, startSecs, endSecs],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTrimmerTrimMp3ConstMeta => const TaskConstMeta(
+        debugName: "trim_mp3",
+        argNames: ["inputPath", "outputPath", "startSecs", "endSecs"],
+      );
+
+  @override
+  Future<String> crateApiTrimmerTrimWav(
+      {required String inputPath,
+      required String outputPath,
+      required double startSecs,
+      required double endSecs}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(inputPath, serializer);
+        sse_encode_String(outputPath, serializer);
+        sse_encode_f_64(startSecs, serializer);
+        sse_encode_f_64(endSecs, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 25, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiTrimmerTrimWavConstMeta,
+      argValues: [inputPath, outputPath, startSecs, endSecs],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTrimmerTrimWavConstMeta => const TaskConstMeta(
+        debugName: "trim_wav",
+        argNames: ["inputPath", "outputPath", "startSecs", "endSecs"],
+      );
+
+  @override
   List<Playlist> crateApiFileOpsUpdatePlaylistsAfterRename(
       {required List<Playlist> playlists,
       required String oldPath,
@@ -808,7 +883,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_list_playlist(playlists, serializer);
         sse_encode_String(oldPath, serializer);
         sse_encode_String(newPath, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 24)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_playlist,

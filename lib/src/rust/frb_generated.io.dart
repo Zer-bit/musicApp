@@ -10,6 +10,7 @@ import 'api/playback.dart';
 import 'api/playlist.dart';
 import 'api/scanner.dart';
 import 'api/search.dart';
+import 'api/trimmer.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;

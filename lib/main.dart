@@ -37,12 +37,12 @@ Future<void> _initializeAudioServices() async {
     try {
       final audioHandler = await AudioService.init(
         builder: () => MyAudioHandler(),
-        config: const AudioServiceConfig(
+        config: AudioServiceConfig(
           androidNotificationChannelId: 'com.example.jezsic.channel.audio',
           androidNotificationChannelName: 'Music Playback',
           androidNotificationChannelDescription: 'Jezsic music player controls',
           androidNotificationOngoing: true,
-          androidStopForegroundOnPause: true,
+          androidStopForegroundOnPause: false,
           androidNotificationIcon: 'drawable/ic_music_notification',
           androidShowNotificationBadge: true,
         ),
