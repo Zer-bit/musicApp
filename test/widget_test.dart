@@ -13,11 +13,11 @@ void main() {
       ),
     );
 
-    // Verify that the header title "Jezsic Guide" is found
-    expect(find.text('Jezsic Guide'), findsOneWidget);
-
-    // Verify that the first slide title "Welcome to Jezsic" is found
-    expect(find.text('Welcome to Jezsic'), findsOneWidget);
+    // Verify that the header title "Void Guide" is found
+    expect(find.text('Void Guide'), findsOneWidget);
+ 
+    // Verify that the first slide title "Welcome to Void" is found
+    expect(find.text('Welcome to Void'), findsOneWidget);
 
     // Verify that the 'Next' button is displayed
     expect(find.text('Next'), findsOneWidget);
@@ -37,7 +37,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify that we are back to the first slide
-    expect(find.text('Welcome to Jezsic'), findsOneWidget);
+    expect(find.text('Welcome to Void'), findsOneWidget);
   });
 
   testWidgets('UserTutorialDialog stress navigation test',
@@ -71,7 +71,7 @@ void main() {
       }
 
       // We should be back on slide 1
-      expect(find.text('Welcome to Jezsic'), findsOneWidget);
+      expect(find.text('Welcome to Void'), findsOneWidget);
     }
   });
 }

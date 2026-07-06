@@ -26,7 +26,7 @@
     <!-- POST_NOTIFICATIONS: required for Android 13+ (API 33+) media notification -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="jezsic"
+        android:label="Void"
         android:name="${applicationName}"
         android:icon="@mipmap/jezsic"
         android:usesCleartextTraffic="true">

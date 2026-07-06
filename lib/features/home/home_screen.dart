@@ -248,7 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         content: Text(
-          'Are you sure you want to exit Jezsic?',
+          'Are you sure you want to exit Void?',
           style: TextStyle(
             color: Theme.of(context).textTheme.bodyMedium?.color,
           ),

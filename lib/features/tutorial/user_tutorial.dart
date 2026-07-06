@@ -63,10 +63,10 @@ class _UserTutorialDialogState extends State<UserTutorialDialog> {
   final List<TutorialSlide> _slides = [
     TutorialSlide(
       icon: Icons.music_note_rounded,
-      title: "Welcome to Jezsic",
+      title: "Welcome to Void",
       subtitle: "Premium Audio Player & Downloader",
       description:
-          "Jezsic combines offline local audio playback with online YouTube downloads. Let's take a quick 1-minute tour of the key features to get you started!",
+          "Void combines offline local audio playback with online YouTube downloads. Let's take a quick 1-minute tour of the key features to get you started!",
       iconGradient: AppColors.purpleBlueGradient,
     ),
     TutorialSlide(
@@ -179,7 +179,7 @@ class _UserTutorialDialogState extends State<UserTutorialDialog> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Jezsic Guide',
+                          'Void Guide',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.9),
                             fontSize: 16,

@@ -115,7 +115,7 @@ class _MyAppState extends State<MyApp>
     _lastBrightness = currentBrightness;
 
     return MaterialApp(
-      title: 'Jezsic',
+      title: 'Void',
       debugShowCheckedModeBanner: false,
       theme: activeTheme,
       builder: (context, child) {

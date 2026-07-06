@@ -40,7 +40,7 @@ Future<void> _initializeAudioServices() async {
         config: AudioServiceConfig(
           androidNotificationChannelId: 'com.example.jezsic.channel.audio',
           androidNotificationChannelName: 'Music Playback',
-          androidNotificationChannelDescription: 'Jezsic music player controls',
+          androidNotificationChannelDescription: 'Void music player controls',
           androidNotificationOngoing: true,
           androidStopForegroundOnPause: false,
           androidNotificationIcon: 'drawable/ic_music_notification',

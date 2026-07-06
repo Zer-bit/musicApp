@@ -241,7 +241,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                           child: Transform.translate(
                             offset: Offset(0, 20 * (1 - _titleFade.value)),
                             child: Text(
-                              'Jezsic',
+                              'Void',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 44,
