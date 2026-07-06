@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.jezsic"
+    namespace = "com.example.voidapp"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 
@@ -17,7 +17,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.jezsic"
+        applicationId = "com.example.voidapp"
         minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode()

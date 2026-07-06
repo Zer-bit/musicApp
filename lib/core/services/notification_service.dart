@@ -9,7 +9,7 @@ class DownloadNotificationService {
   static Future<void> init() async {
     if (_initialized) return;
     try {
-      const android = AndroidInitializationSettings('@mipmap/jezsic');
+      const android = AndroidInitializationSettings('@mipmap/void_icon');
       await _plugin.initialize(const InitializationSettings(android: android));
       const channel = AndroidNotificationChannel(
         _channelId,

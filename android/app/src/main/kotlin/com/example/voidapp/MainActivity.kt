@@ -1,4 +1,4 @@
-package com.example.jezsic
+package com.example.voidapp
 
 import io.flutter.embedding.android.FlutterActivity
 import com.ryanheise.audioservice.AudioServiceActivity

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jezsic/features/tutorial/user_tutorial.dart';
+import 'package:void_app/features/tutorial/user_tutorial.dart';
 
 void main() {
   testWidgets('UserTutorialDialog rendering test', (WidgetTester tester) async {

@@ -20,7 +20,7 @@ Future<void> main() async {
   // AudioService.init() binds to MediaBrowserServiceCompat which requires
   // the Android Activity to be in the 'Started' state — only guaranteed
   // after runApp() has been called. Calling it before runApp() in release
-  // mode (AOT) causes an immediate native crash ('jezsic has stopped').
+  // mode (AOT) causes an immediate native crash ('void_app has stopped').
   //
   // The LoadingScreen waits up to 10 seconds for the handler to be ready
   // before allowing any user interaction.
@@ -38,7 +38,7 @@ Future<void> _initializeAudioServices() async {
       final audioHandler = await AudioService.init(
         builder: () => MyAudioHandler(),
         config: AudioServiceConfig(
-          androidNotificationChannelId: 'com.example.jezsic.channel.audio',
+          androidNotificationChannelId: 'com.example.voidapp.channel.audio',
           androidNotificationChannelName: 'Music Playback',
           androidNotificationChannelDescription: 'Void music player controls',
           androidNotificationOngoing: true,

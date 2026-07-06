@@ -28,7 +28,7 @@
     <application
         android:label="Void"
         android:name="${applicationName}"
-        android:icon="@mipmap/jezsic"
+        android:icon="@mipmap/void_icon"
         android:usesCleartextTraffic="true">
         
         <!-- Audio Service -->

@@ -1,14 +1,14 @@
-# Jezsic — Architecture & Developer Guidelines
+# Void — Architecture & Developer Guidelines
 
 **IMPORTANT INSTRUCTION FOR ALL DEVELOPERS AND AI AGENTS: READ THIS DOCUMENT BEFORE UNDERTAKING ANY DEVELOPMENT TASK OR MODIFYING THE CODEBASE.**
 
-Jezsic is a premium, high-fidelity hybrid music player and downloader built using **Flutter/Dart** for the frontend and **Rust** for core business logic, filesystem operations, and high-performance audio processing. The communication between Flutter and Rust is powered by `flutter_rust_bridge` (v2).
+Void is a premium, high-fidelity hybrid music player and downloader built using **Flutter/Dart** for the frontend and **Rust** for core business logic, filesystem operations, and high-performance audio processing. The communication between Flutter and Rust is powered by `flutter_rust_bridge` (v2).
 
 ---
 
 ## 🏗️ Core Architectural Rules
 
-To maintain a clean separation of concerns and ensure high performance, Jezsic enforces a strict boundary between the user interface and business logic.
+To maintain a clean separation of concerns and ensure high performance, Void enforces a strict boundary between the user interface and business logic.
 
 ```mermaid
 graph TD
@@ -49,7 +49,7 @@ graph TD
 
 ## 🛠️ Rust API Modules (`rust/src/api/`)
 
-The core engine of Jezsic is divided into dedicated domain modules in Rust:
+The core engine of Void is divided into dedicated domain modules in Rust:
 
 ### 1. [models.rs](file:///home/zer/Documents/musicApp/rust/src/api/models.rs) — Data Structures
 Defines FFI-compatible structs shared between Dart and Rust:
@@ -152,7 +152,7 @@ lib/
 
 ## 🎨 Theme & Visual Styling
 
-Jezsic adopts a premium, high-contrast dark theme by default:
+Void adopts a premium, high-contrast dark theme by default:
 * **Deep Obsidian**: Card and backgrounds use slate-obsidian colors (`0xFF0B0F19` / `0xFF1E293B`) to highlight media cover arts.
 * **Mint/Emerald Green**: The accent/primary shade is styled with Vibrant Emerald Green (`0xFF10B981`, mapped internally to `AppColors.purple`).
 * **Royal Blue**: Used as secondary accents (`0xFF3B82F6`) for sliders, buttons, and progress indicators.
@@ -201,7 +201,7 @@ Jezsic adopts a premium, high-contrast dark theme by default:
 ## ⚠️ Common Developer Pitfalls
 
 * **Android Crash on Audio Initialisation**:
-  * *Behavior*: App immediately stops with `jezsic has stopped` in release mode.
+  * *Behavior*: App immediately stops with `void_app has stopped` in release mode.
   * *Cause*: Initializing `AudioService` (which binds Android's `MediaBrowserServiceCompat`) before Flutter's native activity is fully attached and in the `Started` state.
   * *Fix*: `runApp()` MUST be called before triggering `AudioService.init()`. Ensure `_initializeAudioServices()` runs in a fire-and-forget delayed stream as configured in `main.dart`.
 * **Rust Mod Files Configuration**:
