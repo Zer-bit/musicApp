@@ -57,12 +57,16 @@ class _MyAppState extends State<MyApp>
       primaryColor: AppColors.purple,
       scaffoldBackgroundColor: AppColors.background,
       cardColor: AppColors.surface,
+      textTheme: ThemeData.dark().textTheme.apply(
+        bodyColor: const Color(0xFFF8F8F8),
+        displayColor: const Color(0xFFF8F8F8),
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: Color(0xFFF8F8F8)),
         titleTextStyle: TextStyle(
-          color: Colors.white,
+          color: Color(0xFFF8F8F8),
           fontSize: 20,
           fontWeight: FontWeight.bold,
         ),
@@ -79,6 +83,10 @@ class _MyAppState extends State<MyApp>
       primaryColor: AppColors.purple,
       scaffoldBackgroundColor: Colors.white,
       cardColor: Colors.white,
+      textTheme: ThemeData.light().textTheme.apply(
+        bodyColor: Colors.black,
+        displayColor: Colors.black,
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
