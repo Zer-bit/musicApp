@@ -38,7 +38,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
   http.Client? _downloadClient;
 
   // API URL - Render Production
-  static const String apiUrl = 'https://youtube-mp3-api-fgve.onrender.com';
+  static const String apiUrl = 'https://youtube-mp3-api.fly.dev';
 
   @override
   void initState() {
@@ -153,8 +153,9 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
       // Step 1: Call API - server streams MP3 directly with retry
       http.StreamedResponse? apiResponse;
       int retries = 0;
-      while (retries < 3) {
+      while (retries < 3 && _isDownloading) {
         try {
+          if (!_isDownloading) throw Exception('Download cancelled');
           _downloadClient = http.Client();
           final req = http.Request('POST', Uri.parse('$apiUrl/api/download'));
           req.headers['Content-Type'] = 'application/json';
@@ -167,6 +168,7 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
               );
           break; // success
         } catch (e) {
+          if (!_isDownloading) rethrow;
           retries++;
           if (retries >= 3) rethrow;
           debugPrint('Retry $retries after error: $e');
@@ -304,8 +306,8 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
       }
     } catch (e) {
       debugPrint('❌ Download error: $e');
-      if (mounted && _isDownloading) {
-        final msg = e.toString().replaceAll('Exception: ', '');
+      final msg = e.toString().replaceAll('Exception: ', '');
+      if (mounted && (msg.contains('cancelled') || _isDownloading)) {
         String userMessage;
 
         if (msg.contains('cancelled')) {

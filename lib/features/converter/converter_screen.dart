@@ -21,7 +21,7 @@ class ConverterScreen extends StatefulWidget {
 }
 
 class _ConverterScreenState extends State<ConverterScreen> {
-  static const String _apiUrl = 'https://youtube-mp3-api-fgve.onrender.com';
+  static const String _apiUrl = 'https://youtube-mp3-api.fly.dev';
 
   // State variables for file picking
   File? _selectedFile;
