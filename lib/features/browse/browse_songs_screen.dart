@@ -206,15 +206,12 @@ class _BrowseSongsScreenState extends State<BrowseSongsScreen>
       }
 
       final disposition = apiResponse.headers['content-disposition'] ?? '';
-      String apiTitle = _sanitizeFileName(video.title);
+      final apiTitle = _sanitizeFileName(video.title);
       String fileExt = 'm4a';
       if (disposition.contains('filename=')) {
         final match = RegExp(r'filename="?([^"]+)"?').firstMatch(disposition);
         if (match != null) {
           final fname = match.group(1)!;
-          apiTitle = fname.contains('.')
-              ? fname.substring(0, fname.lastIndexOf('.'))
-              : fname;
           fileExt = fname.contains('.') ? fname.split('.').last : 'm4a';
         }
       }
