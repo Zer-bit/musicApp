@@ -74,7 +74,7 @@ class _UserTutorialDialogState extends State<UserTutorialDialog> {
       title: "Local Library",
       subtitle: "Scan & Manage Audio Files",
       description:
-          "Go to the All Songs tab and tap the Refresh icon at the top to scan your Music & Downloads folders. Long-press any song to rename/delete files, add to playlists, or write/edit lyrics.",
+          "Tap the Settings gear icon at the top of the All Songs tab to scan your device storage for music. Tap any track's options (...) to rename/delete, view size and path details, or write/edit lyrics.",
       iconGradient: AppColors.bluePurpleGradient,
     ),
     TutorialSlide(
@@ -98,8 +98,16 @@ class _UserTutorialDialogState extends State<UserTutorialDialog> {
       title: "Smart Features",
       subtitle: "Bluetooth & Sleep Timers",
       description:
-          "Enjoy lock screen background controls. Playback automatically pauses when headphones disconnect and resumes when reconnected. Tap the Timer icon in All Songs to set a sleep timer.",
+          "Enjoy background controls. Playback automatically pauses when headphones disconnect and resumes when reconnected. Tap the Settings gear icon to set a sleep timer.",
       iconGradient: AppColors.darkGradient,
+    ),
+    TutorialSlide(
+      icon: Icons.swap_horizontal_circle_rounded,
+      title: "Local Converter",
+      subtitle: "Transcode Video & Recording",
+      description:
+          "Extract audio losslessly from local MP4 video container to M4A instantly. You can also record voice notes, name them immediately, and transcode to MP3 entirely offline.",
+      iconGradient: AppColors.purpleBlueGradient,
     ),
   ];
 

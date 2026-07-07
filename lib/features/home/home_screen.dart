@@ -223,16 +223,124 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _checkFirstOpen() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final isFirstOpen = prefs.getBool('is_first_open') ?? true;
-      if (isFirstOpen) {
+      final tosAccepted = prefs.getBool('tos_accepted') ?? false;
+      if (!tosAccepted) {
         if (mounted) {
-          UserTutorialDialog.show(context);
-          await prefs.setBool('is_first_open', false);
+          await _showTermsOfServiceDialog(prefs);
+        }
+      } else {
+        final isFirstOpen = prefs.getBool('is_first_open') ?? true;
+        if (isFirstOpen) {
+          if (mounted) {
+            UserTutorialDialog.show(context);
+            await prefs.setBool('is_first_open', false);
+          }
         }
       }
     } catch (e) {
       debugPrint('Error checking first open: $e');
     }
+  }
+
+  Future<void> _showTermsOfServiceDialog(SharedPreferences prefs) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? const Color(0xFFF8F8F8) : Colors.black;
+    const accentColor = Color(0xFF854F6C);
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF191919) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.gavel_outlined, color: accentColor),
+            const SizedBox(width: 10),
+            Text(
+              'Terms of Service',
+              style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: MediaQuery.of(context).size.width * 0.9,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Please agree to the Terms of Service before using Void:',
+                  style: TextStyle(color: textColor, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                _buildBulletPoint('1. Personal Use Guidelines',
+                    'Void is designed strictly for private, non-commercial, personal entertainment purposes.',
+                    textColor),
+                _buildBulletPoint('2. Content Responsibility',
+                    'You hold full legal responsibility for files you record, transcode, or search. Ensure you possess proper copyright license authorizations.',
+                    textColor),
+                _buildBulletPoint('3. Offline Integrity',
+                    'All audio indexing, recording, conversions, and metadata slicing are done natively on your device. Your data is 100% private.',
+                    textColor),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              SystemNavigator.pop();
+            },
+            child: const Text('Decline', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: accentColor),
+            onPressed: () async {
+              Navigator.pop(context);
+              await prefs.setBool('tos_accepted', true);
+              if (context.mounted) {
+                UserTutorialDialog.show(context);
+                await prefs.setBool('is_first_open', false);
+              }
+            },
+            child: const Text('Agree', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBulletPoint(String title, String desc, Color textColor) {
+    const accentColor = Color(0xFF854F6C);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.circle, size: 6, color: accentColor),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 14.0),
+            child: Text(
+              desc,
+              style: const TextStyle(color: Colors.grey, fontSize: 12, height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool?> _showExitConfirmationDialog(BuildContext context) {

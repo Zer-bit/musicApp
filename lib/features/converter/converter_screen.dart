@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_colors.dart';
 import '../../src/rust/api/format.dart' as rust_format;
 import '../../src/rust/api/converter.dart' as rust_converter;
@@ -32,6 +33,8 @@ class _ConverterScreenState extends State<ConverterScreen> {
   bool _isRecording = false;
   bool _isPaused = false;
   String? _recordedFilePath;
+  int _recordDuration = 0;
+  Timer? _recordTimer;
 
   // Target Format
   String _targetFormat = 'mp3'; // 'mp3' or 'm4a'
@@ -41,7 +44,21 @@ class _ConverterScreenState extends State<ConverterScreen> {
   double _conversionProgress = 0.0;
 
   @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _targetFormat = prefs.getString('converter_default_format') ?? 'mp3';
+    });
+  }
+
+  @override
   void dispose() {
+    _recordTimer?.cancel();
     _audioRecorder.dispose();
     super.dispose();
   }
@@ -98,6 +115,16 @@ class _ConverterScreenState extends State<ConverterScreen> {
           _selectedFile = null;
           _selectedFileName = null;
           _recordedFilePath = path;
+          _recordDuration = 0;
+        });
+
+        _recordTimer?.cancel();
+        _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          if (_isRecording && !_isPaused) {
+            setState(() {
+              _recordDuration++;
+            });
+          }
         });
       } else {
         _showSnackBar(
@@ -130,8 +157,61 @@ class _ConverterScreenState extends State<ConverterScreen> {
     }
   }
 
+  Future<void> _showRenameRecordingDialog() async {
+    final controller = TextEditingController(text: _selectedFileName);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF191919) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Name your Recording',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? const Color(0xFFF8F8F8) : Colors.black,
+          ),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter recording name',
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF854F6C)),
+            ),
+          ),
+          style: TextStyle(
+            color: isDark ? const Color(0xFFF8F8F8) : Colors.black,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFF854F6C)),
+            onPressed: () {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty) {
+                setState(() {
+                  _selectedFileName = newName;
+                });
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _stopRecording() async {
     try {
+      _recordTimer?.cancel();
       final path = await _audioRecorder.stop();
       if (path != null) {
         setState(() {
@@ -141,6 +221,9 @@ class _ConverterScreenState extends State<ConverterScreen> {
           _selectedFileName = 'Voice Note Recording';
           _selectedFileSize = File(path).lengthSync();
         });
+
+        // Prompt user to rename instantly
+        await _showRenameRecordingDialog();
       }
     } catch (e) {
       _showSnackBar('Error stopping recording: $e', Colors.red);
@@ -314,7 +397,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
           children: [
             // --- Info Header ---
             Text(
-              'Transcode video or audio files directly on your Rust-powered API server.',
+              'Convert your mp4 file into mp3/m4a and also you can record your voice and convert it into mp3/m4a locally.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -359,9 +442,11 @@ class _ConverterScreenState extends State<ConverterScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Text(
-                            'Recording in progress...',
-                            style: TextStyle(
+                          Text(
+                            _isPaused
+                                ? 'Recording paused: ${_formatDuration(_recordDuration)}'
+                                : 'Recording: ${_formatDuration(_recordDuration)}',
+                            style: const TextStyle(
                                 color: Colors.red, fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -471,12 +556,24 @@ class _ConverterScreenState extends State<ConverterScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            _selectedFileName!,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _selectedFileName!,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold, fontSize: 15),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 18, color: Colors.grey),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: _showRenameRecordingDialog,
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -648,5 +745,13 @@ class _ConverterScreenState extends State<ConverterScreen> {
         ),
       ),
     );
+  }
+
+  String _formatDuration(int seconds) {
+    final int minutes = seconds ~/ 60;
+    final int remainingSeconds = seconds % 60;
+    final String minutesStr = minutes.toString().padLeft(2, '0');
+    final String secondsStr = remainingSeconds.toString().padLeft(2, '0');
+    return '$minutesStr:$secondsStr';
   }
 }

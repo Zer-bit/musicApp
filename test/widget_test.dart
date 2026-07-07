@@ -50,21 +50,21 @@ void main() {
       ),
     );
 
-    // Stress test: Navigate back and forth through all 5 slides repeatedly
-    // This triggers 80 page transitions to ensure layout and memory stability.
+    // Stress test: Navigate back and forth through all 6 slides repeatedly
+    // This triggers 100 page transitions to ensure layout and memory stability.
     for (int run = 0; run < 10; run++) {
       // Go to last slide
-      for (int i = 0; i < 4; i++) {
+      for (int i = 0; i < 5; i++) {
         expect(find.text('Next'), findsOneWidget);
         await tester.tap(find.text('Next'));
         await tester.pumpAndSettle();
       }
 
-      // We should be on slide 5 (Smart Features), where the button says 'Finish'
+      // We should be on slide 6, where the button says 'Finish'
       expect(find.text('Finish'), findsOneWidget);
 
       // Go back to first slide
-      for (int i = 0; i < 4; i++) {
+      for (int i = 0; i < 5; i++) {
         expect(find.text('Back'), findsOneWidget);
         await tester.tap(find.text('Back'));
         await tester.pumpAndSettle();

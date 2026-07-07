@@ -11,14 +11,14 @@ import '../../src/rust/api/search.dart' as rust_search;
 import '../../src/rust/api/format.dart' as rust_format;
 import '../../core/theme/app_colors.dart';
 import '../../core/services/audio_service.dart';
-import '../../core/services/theme_service.dart';
 import '../tutorial/user_tutorial.dart';
-import 'dialogs/sleep_timer_dialog.dart';
 import 'dialogs/playlist_dialog.dart';
 import 'dialogs/rename_dialog.dart';
 import 'dialogs/delete_dialog.dart';
 import 'dialogs/lyrics_dialog.dart';
 import 'dialogs/trim_dialog.dart';
+import 'dialogs/details_dialog.dart';
+import '../settings/settings_screen.dart';
 
 class AllSongsScreen extends StatefulWidget {
   final List<Map<String, String>> songs;
@@ -188,47 +188,142 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     }
   }
 
+  Future<bool> _showCustomPermissionDialog({
+    required String title,
+    required String description,
+    required bool isManual,
+  }) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? const Color(0xFFF8F8F8) : Colors.black;
+    const accentColor = Color(0xFF854F6C);
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF191919) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.security_outlined, color: accentColor),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          description,
+          style: TextStyle(color: textColor, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Decline', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: accentColor),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              isManual ? 'Configure' : 'Accept',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
   Future<void> _requestPermissionAndScan() async {
     setState(() {
       _isLoading = true;
     });
 
-    if (Platform.isAndroid) {
-      final notifStatus = await Permission.notification.status;
-      if (!notifStatus.isGranted) {
-        await Permission.notification.request();
-      }
+    try {
+      if (Platform.isAndroid) {
+        final notifStatus = await Permission.notification.status;
+        if (!notifStatus.isGranted) {
+          final accepted = await _showCustomPermissionDialog(
+            title: 'Notification Access Required',
+            description: 'Void needs permission to display background audio playback control notifications in your notification tray and lock screen.',
+            isManual: false,
+          );
+          if (accepted) {
+            await Permission.notification.request();
+          }
+        }
 
-      final btConnect = await Permission.bluetoothConnect.status;
-      if (!btConnect.isGranted) {
-        await Permission.bluetoothConnect.request();
+        final btConnect = await Permission.bluetoothConnect.status;
+        if (!btConnect.isGranted) {
+          final accepted = await _showCustomPermissionDialog(
+            title: 'Bluetooth Connect Required',
+            description: 'Void needs permission to connect to bluetooth audio devices, allowing seamless play/pause transitions when headphones disconnect.',
+            isManual: false,
+          );
+          if (accepted) {
+            await Permission.bluetoothConnect.request();
+            await Permission.bluetoothScan.request();
+          }
+        }
       }
-      final btScan = await Permission.bluetoothScan.status;
-      if (!btScan.isGranted) {
-        await Permission.bluetoothScan.request();
-      }
-    }
+    } catch (_) {}
 
-    PermissionStatus status = PermissionStatus.denied;
+    bool hasStorage = false;
 
-    if (await Permission.audio.isGranted) {
-      status = PermissionStatus.granted;
-    } else if (await Permission.storage.isGranted) {
-      status = PermissionStatus.granted;
-    } else if (await Permission.manageExternalStorage.isGranted) {
-      status = PermissionStatus.granted;
+    // Check current storage permissions
+    final audioStatus = await Permission.audio.status;
+    final storageStatus = await Permission.storage.status;
+    final manageStatus = await Permission.manageExternalStorage.status;
+
+    if (audioStatus.isGranted || storageStatus.isGranted || manageStatus.isGranted) {
+      hasStorage = true;
     } else {
-      status = await Permission.audio.request();
-      if (!status.isGranted) {
-        status = await Permission.storage.request();
-      }
-      if (!status.isGranted) {
-        status = await Permission.manageExternalStorage.request();
+      final bool accepted = await _showCustomPermissionDialog(
+        title: 'Storage Access Required',
+        description: 'Void needs access to your device\'s local storage to scan, index, and organize your music files. All processing is completed 100% locally.',
+        isManual: Platform.isAndroid && (await Permission.manageExternalStorage.status.isDenied || storageStatus.isPermanentlyDenied),
+      );
+
+      if (accepted) {
+        if (Platform.isAndroid) {
+          // Attempt standard permission prompts
+          var status = await Permission.audio.request();
+          if (!status.isGranted) {
+            status = await Permission.storage.request();
+          }
+          if (!status.isGranted) {
+            status = await Permission.manageExternalStorage.request();
+          }
+
+          // If still not granted, navigate user to the system settings toggle page manually
+          if (!status.isGranted) {
+            final configure = await _showCustomPermissionDialog(
+              title: 'Manual Activation Required',
+              description: 'Storage permission has been denied. To proceed, please enable Storage access manually inside your system settings toggle page.',
+              isManual: true,
+            );
+            if (configure) {
+              await openAppSettings();
+            }
+          }
+
+          final finalAudio = await Permission.audio.status;
+          final finalStorage = await Permission.storage.status;
+          final finalManage = await Permission.manageExternalStorage.status;
+          hasStorage = finalAudio.isGranted || finalStorage.isGranted || finalManage.isGranted;
+        } else {
+          final status = await Permission.storage.request();
+          hasStorage = status.isGranted;
+        }
       }
     }
 
     setState(() {
-      _hasPermission = status.isGranted;
+      _hasPermission = hasStorage;
     });
 
     if (_hasPermission) {
@@ -307,10 +402,6 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     await _audioService.playSong(path, index);
   }
 
-  void _showSleepTimerDialog() {
-    showSleepTimerDialog(context, _audioService, () => setState(() {}));
-  }
-
   void _showAddToPlaylistDialog(String songPath, String songTitle) {
     showAddToPlaylistDialog(
       context,
@@ -372,89 +463,18 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     );
   }
 
-  void _showThemeSelectionDialog(BuildContext context) {
-    final themeService = ThemeService();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        title: Text(
-          'Choose Theme',
-          style: TextStyle(
-            color: Theme.of(context).textTheme.bodyLarge?.color,
-          ),
+  void _showSettingsScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SettingsScreen(
+          audioService: _audioService,
+          onScanLibrary: _requestPermissionAndScan,
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(
-                'System Default',
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyLarge?.color,
-                ),
-              ),
-              leading: Icon(
-                Icons.brightness_auto,
-                color: Theme.of(context).iconTheme.color,
-              ),
-              trailing: themeService.themeMode == ThemeMode.system
-                  ? const Icon(Icons.check, color: AppColors.purple)
-                  : null,
-              onTap: () {
-                themeService.setThemeMode(ThemeMode.system);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: Text(
-                'Light Mode',
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyLarge?.color,
-                ),
-              ),
-              leading: Icon(
-                Icons.light_mode,
-                color: Theme.of(context).iconTheme.color,
-              ),
-              trailing: themeService.themeMode == ThemeMode.light
-                  ? const Icon(Icons.check, color: AppColors.purple)
-                  : null,
-              onTap: () {
-                themeService.setThemeMode(ThemeMode.light);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: Text(
-                'Dark Mode',
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyLarge?.color,
-                ),
-              ),
-              leading: Icon(
-                Icons.dark_mode,
-                color: Theme.of(context).iconTheme.color,
-              ),
-              trailing: themeService.themeMode == ThemeMode.dark
-                  ? const Icon(Icons.check, color: AppColors.purple)
-                  : null,
-              onTap: () {
-                themeService.setThemeMode(ThemeMode.dark);
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child:
-                const Text('Close', style: TextStyle(color: AppColors.purple)),
-          ),
-        ],
       ),
-    );
+    ).then((_) {
+      setState(() {});
+    });
   }
 
   @override
@@ -491,23 +511,9 @@ class _AllSongsScreenState extends State<AllSongsScreen>
             tooltip: 'User Guide',
           ),
           IconButton(
-            icon: const Icon(Icons.palette_outlined),
-            onPressed: () => _showThemeSelectionDialog(context),
-            tooltip: 'Change Theme',
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.timer,
-              color: _audioService.sleepTimer != null
-                  ? AppColors.purple
-                  : Theme.of(context).iconTheme.color,
-            ),
-            onPressed: _showSleepTimerDialog,
-            tooltip: 'Sleep Timer',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _requestPermissionAndScan,
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _showSettingsScreen,
+            tooltip: 'Settings',
           ),
         ],
       ),
@@ -739,6 +745,11 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                                         song['title']!,
                                         song['duration'] ?? '0:00',
                                       );
+                                    } else if (value == 'details') {
+                                      showSongDetailsDialog(
+                                        context,
+                                        song,
+                                      );
                                     }
                                   },
                                   itemBuilder: (context) => [
@@ -788,6 +799,16 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                                                 ? 'Open Lyrics'
                                                 : 'Add Lyrics',
                                           ),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'details',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.info_outline),
+                                          SizedBox(width: 12),
+                                          Text('Details'),
                                         ],
                                       ),
                                     ),
