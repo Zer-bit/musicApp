@@ -6,3 +6,4 @@ pub mod playback;
 pub mod file_ops;
 pub mod format;
 pub mod trimmer;
+pub mod converter;

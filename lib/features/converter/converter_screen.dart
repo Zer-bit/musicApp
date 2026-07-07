@@ -1,12 +1,13 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:http/http.dart' as http;
 import '../../core/theme/app_colors.dart';
 import '../../src/rust/api/format.dart' as rust_format;
+import '../../src/rust/api/converter.dart' as rust_converter;
 
 class ConverterScreen extends StatefulWidget {
   final VoidCallback onSongDownloaded;
@@ -21,9 +22,7 @@ class ConverterScreen extends StatefulWidget {
 }
 
 class _ConverterScreenState extends State<ConverterScreen> {
-  static const String _apiUrl = 'https://youtube-mp3-api.fly.dev';
-
-  // State variables for file picking
+  // Selected file details
   File? _selectedFile;
   String? _selectedFileName;
   int? _selectedFileSize;
@@ -40,12 +39,10 @@ class _ConverterScreenState extends State<ConverterScreen> {
   // Conversion Status
   bool _isConverting = false;
   double _conversionProgress = 0.0;
-  http.Client? _httpClient;
 
   @override
   void dispose() {
     _audioRecorder.dispose();
-    _httpClient?.close();
     super.dispose();
   }
 
@@ -186,41 +183,22 @@ class _ConverterScreenState extends State<ConverterScreen> {
       _conversionProgress = 0.0;
     });
 
-    _httpClient = http.Client();
+    Timer? progressTimer;
+    if (_targetFormat == 'mp3') {
+      progressTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+        if (!_isConverting) {
+          timer.cancel();
+          return;
+        }
+        setState(() {
+          if (_conversionProgress < 0.9) {
+            _conversionProgress += 0.02;
+          }
+        });
+      });
+    }
 
     try {
-      final request =
-          http.MultipartRequest('POST', Uri.parse('$_apiUrl/api/convert'));
-      request.fields['format'] = _targetFormat;
-      request.files
-          .add(await http.MultipartFile.fromPath('file', _selectedFile!.path));
-
-      final response = await _httpClient!.send(request);
-
-      if (response.statusCode != 200) {
-        final errText = await response.stream.bytesToString();
-        throw Exception(
-            'Failed to convert (code ${response.statusCode}): $errText');
-      }
-
-      final contentLength = response.contentLength ?? 0;
-      final List<int> bytes = [];
-
-      await for (var chunk in response.stream) {
-        if (!_isConverting) throw Exception('Conversion cancelled');
-        bytes.addAll(chunk);
-
-        if (contentLength > 0) {
-          setState(() {
-            _conversionProgress = bytes.length / contentLength;
-          });
-        }
-      }
-
-      if (bytes.length < 1000) {
-        throw Exception('Converted file is invalid or too small.');
-      }
-
       // Save the file in the Music directory
       final String saveDirPath;
       if (Platform.isMacOS) {
@@ -244,12 +222,29 @@ class _ConverterScreenState extends State<ConverterScreen> {
       if (originalName.isEmpty) originalName = 'converted_file';
 
       final finalFile = File('${saveDir.path}/$originalName.$_targetFormat');
-      await finalFile.writeAsBytes(bytes);
+
+      // Call Rust local conversion engine
+      final finalPath = await rust_converter.convertMediaFile(
+        inputPath: _selectedFile!.path,
+        outputPath: finalFile.path,
+        targetFormat: _targetFormat,
+      );
+
+      final returnedFile = File(finalPath);
+      final finalFileName = returnedFile.path.split('/').last;
+
+      if (!returnedFile.existsSync() || returnedFile.lengthSync() < 1000) {
+        throw Exception('Failed to generate a valid audio file.');
+      }
+
+      setState(() {
+        _conversionProgress = 1.0;
+      });
 
       widget.onSongDownloaded();
 
       _showSnackBar(
-          'Converted and saved: $originalName.$_targetFormat', Colors.green);
+          'Converted and saved: $finalFileName', Colors.green);
 
       // Clean up local temp voice recording if we recorded it
       if (_recordedFilePath != null) {
@@ -270,10 +265,10 @@ class _ConverterScreenState extends State<ConverterScreen> {
         _showSnackBar('Conversion error: $e', Colors.red);
       }
     } finally {
+      progressTimer?.cancel();
       setState(() {
         _isConverting = false;
       });
-      _httpClient?.close();
     }
   }
 
@@ -281,7 +276,6 @@ class _ConverterScreenState extends State<ConverterScreen> {
     setState(() {
       _isConverting = false;
     });
-    _httpClient?.close();
     _showSnackBar('Conversion cancelled.', Colors.orange);
   }
 
@@ -609,8 +603,8 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   const SizedBox(height: 12),
                   Text(
                     _conversionProgress > 0
-                        ? 'Converting & Downloading: ${(_conversionProgress * 100).toStringAsFixed(0)}%'
-                        : 'Uploading file to Rust transcoding server...',
+                        ? 'Converting: ${(_conversionProgress * 100).toStringAsFixed(0)}%'
+                        : 'Converting file locally...',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 13, color: Colors.grey),
                   ),
