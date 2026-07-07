@@ -539,6 +539,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                             _rustFilteredSongs = null;
                             _rustFilteredQuery = '';
                           });
+                          FocusScope.of(context).unfocus();
                         },
                       )
                     : null,

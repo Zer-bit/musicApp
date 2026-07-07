@@ -191,10 +191,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'Version 1.0.0 • Pure-Rust Core',
+                  'Developed by solo developer @Zer-bit',
                   style: TextStyle(
                     color: Colors.grey,
                     fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Version 1.0.0 • Pure-Rust Core • Open Source',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Licensed under MIT',
+                  style: TextStyle(
+                    color: _accentColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 16),
