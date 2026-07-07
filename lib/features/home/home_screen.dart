@@ -27,6 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
     {'name': 'Favorites', 'songs': <String>[], 'isSystem': true},
   ];
 
+  /// Key that lets other screens trigger a rescan on AllSongsScreen directly.
+  final GlobalKey<AllSongsScreenState> _allSongsKey = GlobalKey<AllSongsScreenState>();
+
   void _updateSongs(List<Map<String, String>> songs) {
     setState(() {
       _songs.clear();
@@ -400,6 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     final allSongsScreen = AllSongsScreen(
+      key: _allSongsKey,
       songs: _songs,
       onUpdateSongs: _updateSongs,
       playlists: _playlists,
@@ -412,13 +416,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final browseSongsScreen = BrowseSongsScreen(
       onSongDownloaded: () {
-        setState(() {});
+        // Automatically rescan All Songs after a download completes
+        _allSongsKey.currentState?.triggerScan();
       },
     );
 
     final converterScreen = ConverterScreen(
       onSongDownloaded: () {
-        setState(() {});
+        // Automatically rescan All Songs after a conversion/recording is saved
+        _allSongsKey.currentState?.triggerScan();
       },
     );
 

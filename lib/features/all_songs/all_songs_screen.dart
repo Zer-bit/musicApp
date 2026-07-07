@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:audio_service/audio_service.dart' show MediaItem;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -43,16 +44,25 @@ class AllSongsScreen extends StatefulWidget {
   });
 
   @override
-  State<AllSongsScreen> createState() => _AllSongsScreenState();
+  State<AllSongsScreen> createState() => AllSongsScreenState();
 }
 
-class _AllSongsScreenState extends State<AllSongsScreen>
+class AllSongsScreenState extends State<AllSongsScreen>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true; // Keep this widget alive
 
+  /// Called externally (e.g. from HomeScreen after a download) to silently
+  /// rescan the storage and refresh the song list without user interaction.
+  Future<void> triggerScan() async {
+    if (_hasPermission) {
+      await _scanForMusicFiles();
+    }
+  }
+
   final GlobalAudioService _audioService = GlobalAudioService();
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   bool _hasPermission = false;
   bool _isLoading = false;
   String _searchQuery = '';
@@ -67,6 +77,11 @@ class _AllSongsScreenState extends State<AllSongsScreen>
     super.initState();
     _audioService.onIncrementPlayCount = widget.onIncrementPlayCount;
     _audioService.addListener(_onAudioServiceUpdate);
+    _searchFocusNode.addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCachedSongsOrScan();
@@ -373,8 +388,57 @@ class _AllSongsScreenState extends State<AllSongsScreen>
         };
       }).toList();
 
-      widget.onUpdateSongs(foundSongs);
-      await _saveSongsToCache(foundSongs);
+      List<Map<String, String>> sortedSongs = foundSongs;
+      try {
+        final titles = foundSongs.map((s) => s['title'] ?? '').toList();
+        final artists = foundSongs.map((s) => s['artist'] ?? '').toList();
+        final dates = foundSongs.map((s) => int.tryParse(s['modifiedDate'] ?? '0') ?? 0).toList();
+
+        final indices = await rust_search.sortSongs(
+          titles: titles,
+          artists: artists,
+          modifiedDates: Int64List.fromList(dates),
+          sortBy: 'date',
+        );
+
+        sortedSongs = indices.map((idx) => foundSongs[idx]).toList();
+      } catch (e) {
+        foundSongs.sort((a, b) {
+          int dateA = int.tryParse(a['modifiedDate'] ?? '0') ?? 0;
+          int dateB = int.tryParse(b['modifiedDate'] ?? '0') ?? 0;
+          return dateB.compareTo(dateA);
+        });
+        sortedSongs = foundSongs;
+      }
+
+      final oldSongs = List<Map<String, String>>.from(widget.songs);
+
+      widget.onUpdateSongs(sortedSongs);
+      await _saveSongsToCache(sortedSongs);
+
+      // Keep the audio service playlist in sync if we are playing from All Songs
+      if (_audioService.currentlyPlaying != null) {
+        bool isPlayingAllSongs = false;
+        if (_audioService.currentPlaylist.length == oldSongs.length) {
+          isPlayingAllSongs = true;
+          for (int i = 0; i < oldSongs.length; i++) {
+            if (_audioService.currentPlaylist[i]['path'] != oldSongs[i]['path']) {
+              isPlayingAllSongs = false;
+              break;
+            }
+          }
+        }
+        if (isPlayingAllSongs) {
+          _audioService.currentPlaylist = List.from(sortedSongs);
+          final playingItem = _audioService.audioPlayer.sequenceState?.currentSource?.tag as MediaItem?;
+          if (playingItem != null) {
+            final newIdx = sortedSongs.indexWhere((s) => s['path'] == playingItem.id);
+            if (newIdx != -1) {
+              _audioService.currentlyPlaying = newIdx;
+            }
+          }
+        }
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -481,6 +545,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
   void dispose() {
     _audioService.removeListener(_onAudioServiceUpdate);
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -523,13 +588,14 @@ class _AllSongsScreenState extends State<AllSongsScreen>
             padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _searchController,
+              focusNode: _searchFocusNode,
               style: TextStyle(
                   color: Theme.of(context).textTheme.bodyLarge?.color),
               decoration: InputDecoration(
                 hintText: 'Search songs...',
                 hintStyle: TextStyle(color: Colors.grey.shade500),
                 prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                suffixIcon: _searchQuery.isNotEmpty
+                suffixIcon: (_searchQuery.isNotEmpty || _searchFocusNode.hasFocus)
                     ? IconButton(
                         icon: const Icon(Icons.clear, color: Colors.grey),
                         onPressed: () {
@@ -539,7 +605,7 @@ class _AllSongsScreenState extends State<AllSongsScreen>
                             _rustFilteredSongs = null;
                             _rustFilteredQuery = '';
                           });
-                          FocusScope.of(context).unfocus();
+                          _searchFocusNode.unfocus();
                         },
                       )
                     : null,
